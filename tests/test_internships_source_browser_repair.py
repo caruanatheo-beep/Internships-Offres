@@ -95,3 +95,35 @@ def test_bnp_readable_non_market_jobs_are_empty_success(monkeypatch, prefix):
     monkeypatch.setattr(sync_api, "sync_playwright", lambda: provider)
     assert jobs._bnp_group_jobs_browser("BNP Paribas", "https://group.bnpparibas/listing") == []
     browser.close.assert_called_once()
+
+
+@pytest.mark.parametrize("pagination_fails", [False, True])
+def test_bnp_recovers_market_jobs_after_first_page(monkeypatch, pagination_fails):
+    from playwright import sync_api
+    root = "https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/stage"
+    offer = "https://group.bnpparibas/emploi-carriere/offre-emploi/stage-sales"
+    provider = MagicMock()
+    page = provider.__enter__.return_value.chromium.launch.return_value.new_page.return_value
+    current = [root]
+    def navigate(url, **kwargs):
+        if pagination_fails and url == root + '?page=2':
+            raise sync_api.TimeoutError("pagination unavailable")
+        current[0] = url
+        return SimpleNamespace(status=200)
+    page.goto.side_effect = navigate
+    page.content.side_effect = lambda: (
+        '<a href="/emploi-carriere/offre-emploi/stage-rh">Stage RH</a>' if current[0] == root
+        else '<a href="' + offer + '">Stage Sales</a>')
+    page.locator.return_value.evaluate_all.side_effect = lambda script: (
+        [{"href": root+'?page=2', "label":"Suivant"}] if current[0] == root else
+        [{"href": "https://evil.invalid/next", "label":"Suivant"}])
+    monkeypatch.setattr(sync_api, "sync_playwright", lambda: provider)
+    monkeypatch.setattr(jobs, "_career_detail", lambda url, company, title, **kw: jobs._opportunity(
+        title, company, "Paris", "Stage", url, ""))
+    if pagination_fails:
+        with pytest.raises(jobs._PartialSourceError) as failure:
+            jobs._bnp_group_jobs_browser("BNP Paribas", root)
+        assert failure.value.preserve_cached
+    else:
+        assert [j.url for j in jobs._bnp_group_jobs_browser("BNP Paribas", root)] == [offer]
+        assert [call.args[0] for call in page.goto.call_args_list] == [root,root+'?page=2',offer]

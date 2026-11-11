@@ -227,9 +227,9 @@ JOBTEASER_CACHE_SECONDS = 24 * 3600
 SOURCE_RETRY_BASE_SECONDS = 15 * 60
 SOURCE_RETRY_MAX_SECONDS = 6 * 3600
 SOURCE_CONNECTOR_VERSIONS = {
-    "Société Générale Careers": 4, "BNP Paribas": 4, "BNP Paribas CIB": 3,
+    "Société Générale Careers": 4, "BNP Paribas": 5, "BNP Paribas CIB": 3,
     "Amundi": 3, "Crédit Agricole CIB": 2, "Crédit Mutuel Arkéa": 2, "Covéa Finance": 2,
-    "DNCA": 2, "BNP Paribas Asset Management": 4, "BNP Paribas VIE": 4,
+    "DNCA": 2, "BNP Paribas Asset Management": 5, "BNP Paribas VIE": 5,
     "ODDO BHF": 2, "La Banque Postale": 2,
     **{name: 2 for name in WORKDAY},
     "BBVA": 3,
@@ -1488,7 +1488,7 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
 
     host = "group.bnpparibas"
     path_prefixes = ("/emploi-carriere/offre-emploi/", "/en/careers/job-offer/")
-    errors: list[str] = []
+    failed_urls: list[str] = []
     candidates: dict[str, str] = {}
     try:
         with sync_playwright() as playwright:
@@ -1503,36 +1503,45 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                 except PlaywrightTimeoutError:
                     pass
 
-                # Use the site's ordinary public "show more" control, with a strict cap.
-                for _ in range(40):
-                    hrefs = page.locator("a").evaluate_all("els => els.map(a => a.href)")
-                    before = len({href for href in hrefs if urlparse(href).hostname == host
-                                  and urlparse(href).path.startswith(path_prefixes)})
-                    more = page.get_by_text(re.compile(r"voir plus d.?offres", re.IGNORECASE)).last
-                    try:
-                        if not more.is_visible(timeout=500):
-                            break
-                        more.click(timeout=1_500)
-                        page.wait_for_timeout(500)
-                    except PlaywrightTimeoutError:
-                        break
-                    hrefs = page.locator("a").evaluate_all("els => els.map(a => a.href)")
-                    after = len({href for href in hrefs if urlparse(href).hostname == host
-                                 and urlparse(href).path.startswith(path_prefixes)})
-                    if after <= before:
-                        break
-
-                listing_page = _CareerHTML()
-                listing_page.feed(page.content())
                 direct_links = 0
-                for href, label in listing_page.links:
-                    offer_url = urljoin(listing_url, href)
-                    parsed = urlparse(offer_url)
-                    if (parsed.scheme == "https" and parsed.hostname == host
-                            and parsed.path.startswith(path_prefixes)):
-                        direct_links += 1
-                        if _market_relevant(label):
-                            candidates[offer_url] = label
+                listing_failures = 0
+                visited = {listing_url}
+                # Follow the public pagination links; the AJAX button can be
+                # covered by a consent banner or finish after a fixed wait.
+                for _ in range(40):
+                    listing_page = _CareerHTML()
+                    listing_page.feed(page.content())
+                    for href, label in listing_page.links:
+                        offer_url = urljoin(listing_url, href)
+                        parsed = urlparse(offer_url)
+                        if (parsed.scheme == "https" and parsed.hostname == host
+                                and parsed.path.startswith(path_prefixes)):
+                            direct_links += 1
+                            if _market_relevant(label):
+                                candidates[offer_url] = label
+                    # Pagination is inside <nav>, excluded by the offer parser.
+                    anchors = page.locator("a").evaluate_all(
+                        "els => els.map(a => ({href:a.href,label:(a.textContent.trim() || a.getAttribute('aria-label') || '')}))")
+                    next_url = next((a["href"] for a in anchors
+                        if re.fullmatch(r"(?:suivant|next)(?:\s*[›»→])?", a["label"], re.I)
+                        and urlparse(a["href"]).scheme == "https"
+                        and urlparse(a["href"]).hostname == host
+                        and urlparse(a["href"]).path == urlparse(listing_url).path), "")
+                    if not next_url:
+                        break
+                    if next_url in visited:
+                        listing_failures += 1
+                        break
+                    visited.add(next_url)
+                    try:
+                        response = page.goto(next_url, wait_until="domcontentloaded", timeout=20_000)
+                        if response is not None and response.status >= 400:
+                            raise ValueError("pagination BNP indisponible")
+                    except (PlaywrightTimeoutError, ValueError):
+                        listing_failures += 1
+                        break
+                else:
+                    listing_failures += 1
 
                 detail_company = "BNP Paribas" if company == "BNP Paribas Asset Management" else company
                 jobs: list[Opportunity] = []
@@ -1540,19 +1549,19 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                     try:
                         detail_response = page.goto(offer_url, wait_until="domcontentloaded", timeout=8_000)
                         if detail_response is not None and detail_response.status >= 400:
-                            errors.append(f"fiche HTTP {detail_response.status}")
+                            failed_urls.append(offer_url)
                             continue
                         job = _career_detail(offer_url, detail_company, label, html_override=page.content())
                         if job and company == "BNP Paribas Asset Management" and job.company == "BNP Paribas":
                             job = replace(job, company="BNP Paribas Asset Management")
                         if job:
                             jobs.append(job)
-                    except (PlaywrightTimeoutError, ValueError, TypeError) as exc:
-                        errors.append(type(exc).__name__)
+                    except (PlaywrightTimeoutError, ValueError, TypeError):
+                        failed_urls.append(offer_url)
+                if listing_failures or failed_urls:
+                    raise _PartialSourceError(jobs, failed_urls, search_failures=listing_failures)
                 if jobs:
                     return list({job.url: job for job in jobs}.values())
-                if errors:
-                    raise ValueError(f"fiches BNP non lisibles ({errors[0]})")
                 if direct_links:
                     return []  # Readable offers outside the filters are a successful empty collection.
                 if os.getenv("GITHUB_ACTIONS") == "true":
