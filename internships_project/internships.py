@@ -66,6 +66,7 @@ CAREER_PORTALS = {
     "BNP Paribas": "https://group.bnpparibas/emploi-carriere/toutes-offres-emploi",
     "BNP Paribas Asset Management": "https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/bnp-paribas-asset-management",
     "BNP Paribas CIB": "https://careers.cib.bnpparibas/job-contract-type/internship/",
+    "BNP Paribas Graduate": "https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/graduate-programme-cdi",
     "BNP Paribas APAC": "https://bnppapply.tal.net/candidate/jobboard/vacancy/3/adv/",
     "Crédit Agricole CIB": "https://jobs.ca-cib.com/offre-de-emploi/liste-offres.aspx?mode=layer&lcid=1036",
     "Amundi": "https://jobs.amundi.com/offre-de-emploi/liste-toutes-offres.aspx?lcid=1036",
@@ -1453,6 +1454,15 @@ def _career_detail(url: str, company: str, fallback_title: str = "",
         location_match = re.search(rf"{re.escape(title)}\s+Stage\s+Temps plein\s+(.+?)\s+Postuler", text)
         location = location_match.group(1) if location_match else ""
     if portal_company == "BNP Paribas" and urlparse(url).hostname == "group.bnpparibas":
+        if not location:
+            place = re.search(
+                r"\b(?:Localisation|Location)\s*:?\s*(.+?)(?=\s+(?:Reference|Référence|Last update|Mise à jour|Date de)\b)",
+                text, re.I)
+            location = place.group(1).strip() if place else ""
+        contract = re.search(
+            r"\b(?:Job type|Type de contrat)\s*:?\s*(Fixed[ -]Term Contract|Permanent Contract|CDI|CDD|Graduate|Stage|Internship|VIE)\b",
+            text, re.I)
+        employment = contract.group(1) if contract else employment
         location = re.sub(r"\s*\(Ce lien s'ouvre dans un nouvel onglet\)\s*$", "", location).strip()
     if company == "BNP Paribas" and urlparse(url).hostname == "careers.cib.bnpparibas":
         location_match = re.search(r"\bLocation:\s*(.+?)(?=\s+(?:Job/mission:|Reference:|About the job))", text)
@@ -1558,6 +1568,28 @@ def _bnp_group_jobs(company: str, listing_url: str) -> list[Opportunity]:
         return [Opportunity(**row) for row in collect_bnp(company, listing_url)]
     virtual_display = bool(os.getenv("GITHUB_ACTIONS") == "true" and os.getenv("DISPLAY"))
     return _bnp_group_jobs_browser(company, listing_url, headless=not virtual_display)
+
+
+def _bnp_graduate_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
+    """BNP also files desk graduate programmes under fixed-term contracts."""
+    found: dict[str, Opportunity] = {}
+    failures = 0
+    for contract in ("graduate-programme-cdi", "cdd"):
+        listing = "https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/" + contract
+        try:
+            result = _bnp_group_jobs("BNP Paribas", listing)
+        except _PartialSourceError as exc:
+            result = exc.jobs
+            failures += 1
+        except (requests.RequestException, ValueError):
+            failures += 1
+            continue
+        found.update((job.url, job) for job in result if job.kind == "Graduate")
+    if failures == 2 and not found:
+        raise ValueError("catalogues Graduate BNP CDI et CDD indisponibles")
+    if failures:
+        raise _PartialSourceError(list(found.values()), [], search_failures=failures)
+    return list(found.values())
 
 
 def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = True) -> list[Opportunity]:
@@ -3251,6 +3283,7 @@ def _fetch_opportunities_progressive() -> tuple[list[Opportunity], list[str]]:
         ("Business France VIE", _vie_jobs, ("", "")),
         ("Cr\u00e9dit Agricole CIB", _ca_cib_jobs, ("", "")),
         ("BNP Paribas CIB", _bnp_cib_jobs, ("", "")),
+        ("BNP Paribas Graduate", _bnp_graduate_jobs, ("", "")),
         ("BNP Paribas APAC", _bnp_tal_jobs, ("", "")),
         ("BNP Paribas", lambda *_: _bnp_group_jobs(
             "BNP Paribas", "https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/stage"), ()),

@@ -29,6 +29,55 @@ def test_programme_contracts(title, employment, expected):
     assert jobs._kind(title, employment) == expected
 
 
+@pytest.mark.parametrize("labels", [
+    "Job type Fixed Term Contract Location Milan, Lombardy, Italy Reference BNPSA_272026 Last update 09.11.2026",
+    "Type de contrat CDD Localisation Milan, Lombardie, Italie Référence BNPSA_272026 Mise à jour 09.11.2026",
+])
+def test_bnp_milan_sales_graduate_detail(labels):
+    title = 'JUNIOR SALES (Graduate Program, Global Markets)'
+    url = 'https://group.bnpparibas/en/careers/job-offer/junior-sales-graduate-program-global-markets-1'
+    detail = f'<h1>{title}</h1><p>{labels}</p><p>Global Markets Graduate Program is a 12-month program. '
+    detail += 'You will be supporting the activity of our Global Markets Front Office team, '
+    detail += 'with interactions with middle office and back office.</p>'
+    job = jobs._career_detail(url, 'BNP Paribas', title, html_override=detail)
+    assert job and job.kind == 'Graduate' and job.location.startswith('Milan')
+    assert jobs.matching_opportunities([job], category='Graduate', query='Milan') == [job]
+
+
+@pytest.mark.parametrize("first_fails", [False, True])
+def test_bnp_searches_graduate_and_fixed_term_catalogues(monkeypatch, first_fails):
+    job = jobs._opportunity('JUNIOR SALES (Graduate Program, Global Markets)', 'BNP Paribas', 'Milan', 'CDD',
+                           'https://group.bnpparibas/en/careers/job-offer/junior-sales-graduate-program-global-markets-1', '')
+    calls = []
+    def collect(company, listing):
+        assert company == 'BNP Paribas'
+        calls.append(listing)
+        if listing.endswith('/graduate-programme-cdi'):
+            if first_fails:
+                raise jobs.requests.ReadTimeout()
+            return []
+        assert listing.endswith('/cdd')
+        return [job,job]
+    monkeypatch.setattr(jobs, '_bnp_group_jobs', collect)
+    if first_fails:
+        with pytest.raises(jobs._PartialSourceError) as error:
+            jobs._bnp_graduate_jobs()
+        found = error.value.jobs
+        assert error.value.preserve_cached
+    else:
+        found = jobs._bnp_graduate_jobs()
+    assert found == [job]
+    assert len(calls) == 2
+
+
+def test_bnp_both_graduate_catalogues_failing_is_not_empty_success(monkeypatch):
+    def fail(*args):
+        raise jobs.requests.ReadTimeout()
+    monkeypatch.setattr(jobs, '_bnp_group_jobs', fail)
+    with pytest.raises(ValueError, match='indisponibles'):
+        jobs._bnp_graduate_jobs()
+
+
 @pytest.mark.parametrize("city", ["Paris", "London", "Frankfurt", "Amsterdam", "Zurich",
                                    "Geneva", "Luxembourg", "Madrid", "Milan", "Dublin",
                                    "Stockholm", "Copenhagen"])
