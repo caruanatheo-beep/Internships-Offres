@@ -64,9 +64,8 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
                           "offers": records}, ensure_ascii=False, separators=(",", ":")).encode()
     assert_public(payload, "offers.json")
     validate_snapshot(json.loads(payload))
-    assets = {name: ROOT / "deploy/github-pages/site" / name for name in ("index.html", "site.css", "app.js")}
+    assets = {name: ROOT / "deploy/github-pages/site" / name for name in ("index.html", "site.css", "app.js", "marketdesk-icon.svg")}
     assets.update(logos)
-    assets["favicon.png"] = ROOT / "internships_project/assets/skema_emblem_2026.png"
     # Validate every byte before creating the publish directory.
     for name, path in assets.items():
         if path.is_symlink():

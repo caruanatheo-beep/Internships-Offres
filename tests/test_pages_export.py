@@ -38,7 +38,7 @@ def test_export_only_public_fields(tmp_path, snapshot):
     assert data["offers"][0]["categories"] == ["Stages Paris"]
     assert data["offers"][0]["start_month"] == "2027-04"
     assert data["sources"]["unavailable"] == 1
-    assert {p.name for p in output.iterdir()} == {"index.html", "site.css", "app.js", "favicon.png", "offers.json", ".nojekyll"}
+    assert {p.name for p in output.iterdir()} == {"index.html", "site.css", "app.js", "marketdesk-icon.svg", "offers.json", ".nojekyll"}
 
 
 def test_empty_or_contaminated_build_is_refused(tmp_path, monkeypatch):
