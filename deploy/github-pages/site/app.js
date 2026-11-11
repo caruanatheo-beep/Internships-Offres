@@ -29,7 +29,8 @@ function render() {
   for (const j of selected.slice((page-1)*size, page*size)) {
     const href = safeLink(j.url); if (!href) continue;
     const card = $("offer-template").content.firstElementChild.cloneNode(true); card.href = href;
-    for (const [selector, value] of [[".company",j.company],["h3",j.title],[".kind",j.kind],[".location",j.location],[".start",j.start],[".family",j.family],[".date",j.date_label]]) {
+    const kindLabel = j.kind === "Graduate" && /\b(?:junior|jr)\b/i.test(j.title) && !/\bgraduates?\b/i.test(j.title) ? "Junior" : j.kind;
+    for (const [selector, value] of [[".company",j.company],["h3",j.title],[".kind",kindLabel],[".location",j.location],[".start",j.start],[".family",j.family],[".date",j.date_label]]) {
       const node = card.querySelector(selector); node.textContent = value; node.title = value;
     }
     const img = card.querySelector("img"), initials = card.querySelector(".initials");

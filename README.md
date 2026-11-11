@@ -1,6 +1,10 @@
 # MarketDesk — offres publiques
 
 Site statique consacré aux stages, VIE et programmes graduate en finance de marché.
+Le filtre « Graduate / Junior » inclut les intitulés Junior Analyst / Analyste junior
+pertinents en marchés et gestion d'actifs. Les intitulés génériques nécessitent une
+description confirmant le desk ; les exigences explicites de trois ans d'expérience
+minimum et les métiers Middle Office, KYC et finance corporate restent exclus.
 GitHub Pages sert uniquement les fichiers HTML/CSS/JS, logos PNG et offres publiques.
 La collecte Python s'exécute toutes les deux heures de 6 h 07 à 2 h 07 le lendemain,
 en Europe/Paris (6, 8, 10, 12, 14, 16, 18, 20, 22, 0 et 2 h 07).

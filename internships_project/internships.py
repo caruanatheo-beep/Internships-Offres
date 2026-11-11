@@ -229,16 +229,18 @@ JOBTEASER_CACHE_SECONDS = 24 * 3600
 SOURCE_RETRY_BASE_SECONDS = 15 * 60
 SOURCE_RETRY_MAX_SECONDS = 6 * 3600
 SOURCE_CONNECTOR_VERSIONS = {
-    "Société Générale Careers": 4, "BNP Paribas": 5, "BNP Paribas CIB": 3,
+    "Société Générale Careers": 5, "BNP Paribas": 6, "BNP Paribas CIB": 4,
     "Amundi": 3, "Crédit Agricole CIB": 2, "Crédit Mutuel Arkéa": 2, "Covéa Finance": 2,
-    "DNCA": 2, "BNP Paribas Asset Management": 5, "BNP Paribas VIE": 5,
+    "DNCA": 2, "BNP Paribas Asset Management": 6, "BNP Paribas VIE": 6,
+    "BNP Paribas Graduate": 2,
     "ODDO BHF": 2, "La Banque Postale": 2,
-    **{name: 3 for name in WORKDAY},
-    **{name: 2 for name in GREENHOUSE.values()},
-    **{name: 2 for name in ORACLE_CAREER_BOARDS},
-    "BBVA": 4,
-    "ING": 4,
-    "Optiver": 2,
+    **{name: 4 for name in WORKDAY},
+    **{name: 3 for name in GREENHOUSE.values()},
+    **{name: 2 for name in LEVER.values()},
+    **{name: 3 for name in ORACLE_CAREER_BOARDS},
+    "BBVA": 5,
+    "ING": 5,
+    "Optiver": 3,
 }
 JOBTEASER_INDEX = "https://assets-cf.jobteaser.com/sitemaps/sitemap.xml"
 JOBTEASER_EMPLOYERS = {
@@ -759,6 +761,31 @@ def _market_relevant(title: str, company: str = "") -> bool:
     return False
 
 
+def _junior_analyst(title: str) -> bool:
+    return bool(re.search(
+        r"\b(?:junior|jr)\b.{0,60}\banalyst(?:e)?\b|\banalyst(?:e)?\b.{0,60}\b(?:junior|jr)\b",
+        " ".join(title.split()), re.I)) and not re.search(
+            r"\b(?:senior|sr|lead|principal|vice president|director|directeur)\b", title, re.I)
+
+
+def _market_candidate(title: str) -> bool:
+    """A generic junior analyst needs its detail before deciding desk relevance."""
+    normalized = unicodedata.normalize("NFKD", title.casefold())
+    normalized = "".join(c for c in normalized if not unicodedata.combining(c))
+    return _market_relevant(title) or (_junior_analyst(title)
+        and not _NON_MARKET_ROLE.search(normalized) and not _CORPORATE_ROLE.search(normalized))
+
+
+def _experienced_junior(context: str) -> bool:
+    number = r"(?:[3-9]|\d{2,}|three|four|five|trois|quatre|cinq)"
+    years = number + r"\s*(?:\+|[-–]\s*\d+)?\s*(?:years?|ans?)\b"
+    experience = r"[^.!?;\n]{0,45}\b(?:experience|expérience)\b"
+    return bool(re.search(
+        r"\b(?:at least|minimum(?: of)?|requires?|must have|au moins|minimum de)\s+" + years + experience
+        + r"|\b" + years + experience + r"\s+(?:is\s+)?(?:required|minimum|obligatoire)\b"
+        + r"|\b(?:experience|expérience)\s+(?:de|of)\s+" + years + r"\s+(?:minimum|required|obligatoire)\b", context, re.I))
+
+
 def _market_relevant_with_context(title: str, context: str = "") -> bool:
     """Allow investment-team roles only when an official description confirms context."""
     normalized = unicodedata.normalize("NFKD", context.casefold())
@@ -783,9 +810,10 @@ def _market_relevant_with_context(title: str, context: str = "") -> bool:
         return True
     if not re.search(r"\b(?:analyst\w*|gerant\w*|risk manag(?:er|ement)|investment|portfolio|tresor\w*)\b", normalized_title):
         return False
+    company_analysis = "" if _junior_analyst(title) else r"financial analysis of companies|"
     confirmed = re.search(
         r"equity investment teams|analysts?\s*/\s*portfolio managers?|"
-        r"financial analysis of companies|"
+        + company_analysis +
         r"cash and executions? on (?:the )?different markets|cash.*executions?.{0,60}marches|"
         r"portfolio liquidity|liquidite des portefeuilles|classes d.actifs liquides|risque des portefeuilles|"
         r"market risk|risk management.*(?:markets?|portfolios?)|"
@@ -794,6 +822,10 @@ def _market_relevant_with_context(title: str, context: str = "") -> bool:
         r"analyses? credit.{0,120}(?:emetteur|obligataire|obligations)",
         normalized,
     )
+    if _junior_analyst(title) and not confirmed:
+        return bool(re.search(
+            r"global markets front office|(?:sales|trading|structuring|fixed income|equity research|quantitative research) (?:desk|team)|"
+            r"(?:public|listed) (?:equities|markets)|gestion (?:actions|obligataire|taux)", normalized))
     return bool(confirmed)
 
 
@@ -836,10 +868,11 @@ def _kind(title: str, employment: str = "") -> str | None:
     if re.search(r"\b(?:apprenticeship|alternance)\b", text):
         return None
     summer = bool(re.search(r"\bsummer (?:analyst|associate)\b", title, re.I))
+    junior = _junior_analyst(title) and not re.search(r"\b(?:intern(?:ship)?s?|stages?|stagiaires?|trainee|off[ -]cycle)\b", text, re.I)
     graduate = bool(re.search(
         r"\b(?:graduates?|new grads?|new analyst|analyst program(?:me)?|"
         r"international talent program(?:me)?|traineeprogramm)\b", text, re.I)
-        or re.search(r"\bfull[ -]?time (?:analyst|associate)\b.{0,90}\b20\d{2}\b", title, re.I))
+        or re.search(r"\bfull[ -]?time (?:analyst|associate)\b.{0,90}\b20\d{2}\b", title, re.I) or junior)
     if re.search(r"\b(?:cdi|cdd|permanent(?: contract)?)\b", employment, re.I) and (not graduate or summer):
         return None
     if re.search(r"\bv\.?i\.?e\b", text):
@@ -856,11 +889,14 @@ def _kind(title: str, employment: str = "") -> str | None:
 
 def _opportunity(title: str, company: str, location: str, employment: str,
                  url: str, published: str, start_period: str = "",
-                 role_context: str = "") -> Opportunity | None:
+                 role_context: str = "", *, defer_junior_context: bool = False) -> Opportunity | None:
     title = title.strip()
     location = _clean_job_location(location, title)
     kind = _kind(title, employment)
-    if not kind or not _market_relevant_with_context(title, role_context) or _excluded_employer(company) or not _plausible_location(location):
+    market = _market_relevant_with_context(title, role_context)
+    pending_junior = defer_junior_context and not role_context and _junior_analyst(title) and _market_candidate(title)
+    if (not kind or not (market or pending_junior) or _excluded_employer(company) or not _plausible_location(location)
+            or kind == "Graduate" and _junior_analyst(title) and _experienced_junior(role_context)):
         return None
     parsed = urlparse(url)
     if not is_trusted_offer_url(url):
@@ -961,6 +997,7 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
             str((item.get("location") or {}).get("name") or ""), "",
             str(item.get("absolute_url") or ""), "",
             _start_period(str(item.get("content") or "")) or _title_period(str(item.get("title") or "")),
+            role_context=_plain_text(str(item.get("content") or "")),
         )
         if job:
             job = replace(job, description=_plain_text(str(item.get("content") or ""))[:12_000])
@@ -996,10 +1033,10 @@ def _optiver_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
                 if parsed.scheme != "https" or parsed.hostname != "www.optiver.com" or not parsed.path.startswith("/join-us/jobs/"):
                     continue
                 seen.add(url)
-                if item.get("experience") not in {"Graduate", "Internship"}:
+                if item.get("experience") not in {"Graduate", "Internship"} and not _junior_analyst(str(item.get("title") or "")):
                     continue
                 job = _opportunity(str(item.get("title") or ""), "Optiver", str(item.get("location") or ""),
-                                   item["experience"], url, "")
+                                   item["experience"], url, "", defer_junior_context=True)
                 if job:
                     candidates[url] = replace(job, source="Site carrière · Optiver")
             if len(seen) >= total:
@@ -1030,7 +1067,7 @@ def _optiver_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
             return job  # The current official catalogue already confirms this vacancy.
 
     with ThreadPoolExecutor(max_workers=4, thread_name_prefix="optiver-detail") as pool:
-        found = list(pool.map(enrich, candidates.values()))
+        found = [job for job in pool.map(enrich, candidates.values()) if _eligible_offer(job)]
     if search_failures:
         raise _PartialSourceError(found, [], search_failures=search_failures)
     return found
@@ -1067,6 +1104,7 @@ def _lever_jobs(slug: str, company: str) -> list[Opportunity]:
             str(categories.get("location") or ""),
             str(categories.get("commitment") or ""), hosted_url, published,
             _start_period(description) or _title_period(str(item.get("text") or "")),
+            role_context=_plain_text(description),
         )
         if job:
             job = replace(job, description=_plain_text(description)[:12_000])
@@ -1093,6 +1131,7 @@ def _ashby_jobs(slug: str, company: str) -> list[Opportunity]:
             str(item.get("location") or ""), str(item.get("employmentType") or ""),
             str(item.get("jobUrl") or ""), str(item.get("publishedAt") or ""),
             _start_period(description) or _title_period(str(item.get("title") or "")),
+            role_context=_plain_text(description),
         )
         if job:
             job = replace(job, description=_plain_text(description)[:12_000])
@@ -1113,7 +1152,7 @@ def _socgen_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
         parsed = urlparse(url)
         title = re.sub(r"\s+", " ", _plain_text(label)).strip()
         if (parsed.scheme == "https" and parsed.hostname == "careers.societegenerale.com"
-                and parsed.path.startswith("/en/job-offers/") and _market_relevant(title)):
+                and parsed.path.startswith("/en/job-offers/") and _market_candidate(title)):
             candidates[url] = title
     if not candidates:
         raise ValueError("catalogue mondial Société Générale lisible, mais aucun lien marchés détecté")
@@ -1574,7 +1613,8 @@ def _bnp_graduate_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]
     """BNP also files desk graduate programmes under fixed-term contracts."""
     found: dict[str, Opportunity] = {}
     failures = 0
-    for contract in ("graduate-programme-cdi", "cdd"):
+    catalogues = ("graduate-programme-cdi", "cdd", "je-recherche-mon-premier-emploi")
+    for contract in catalogues:
         listing = "https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/" + contract
         try:
             result = _bnp_group_jobs("BNP Paribas", listing)
@@ -1585,8 +1625,8 @@ def _bnp_graduate_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]
             failures += 1
             continue
         found.update((job.url, job) for job in result if job.kind == "Graduate")
-    if failures == 2 and not found:
-        raise ValueError("catalogues Graduate BNP CDI et CDD indisponibles")
+    if failures == len(catalogues) and not found:
+        raise ValueError("catalogues Graduate et Junior BNP indisponibles")
     if failures:
         raise _PartialSourceError(list(found.values()), [], search_failures=failures)
     return list(found.values())
@@ -1630,7 +1670,7 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                         if (parsed.scheme == "https" and parsed.hostname == host
                                 and parsed.path.startswith(path_prefixes)):
                             direct_links += 1
-                            if _market_relevant(label):
+                            if _market_candidate(label):
                                 candidates[offer_url] = label
                     # Pagination is inside <nav>, excluded by the offer parser.
                     anchors = page.locator("a").evaluate_all(
@@ -2015,7 +2055,7 @@ def _career_page_jobs(company: str, config: tuple[str, str, str]) -> list[Opport
                     if parsed.path.rstrip("/") == path_prefix.rstrip("/") and not parsed.query:
                         continue
                     direct_links += 1
-                    market_label = _market_relevant(label) or (
+                    market_label = _market_candidate(label) or (
                         company == "Ofi Invest" and bool(re.search(
                             r"analyste\s+(?:cr[eÃ©]dit|obligataire)|fixed\s+income\s+analyst|credit\s+analyst",
                             label, re.IGNORECASE,
@@ -2196,7 +2236,7 @@ def _bnp_cib_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
                 parsed = urlparse(url)
                 if parsed.scheme != "https" or parsed.hostname != "careers.cib.bnpparibas" or not parsed.path.startswith("/jobs/"):
                     continue
-                if not _market_relevant(title):
+                if not _market_candidate(title):
                     continue
                 date_match = re.search(rf"{re.escape(title)}\s+(\d{{1,2}} [A-Za-z]+ \d{{4}})", visible_text)
                 try:
@@ -2598,7 +2638,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                     raise
 
     internship_facets = {}
-    terms = ("Paris", "Trading", "Graduate", "VIE", "Intern", "Internship", "Markets", "Quantitative")
+    terms = ("Paris", "Trading", "Graduate", "VIE", "Intern", "Internship", "Markets", "Quantitative", "Junior")
     if company == "BBVA":
         catalogue = listing("", 0, {})
         for facet in catalogue.get("facets", []):
@@ -2611,7 +2651,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
             raise ValueError("Filtre de stages BBVA indisponible")
         # The contract facet also finds internships without 'Intern' in their title.
         # Keywords cover graduate/VIE roles and internships classified differently.
-        terms = ("", "Internship", "Intern", "Graduate", "VIE")
+        terms = ("", "Internship", "Intern", "Graduate", "VIE", "Junior")
 
     def search(term: str) -> tuple[list[tuple[str, Opportunity]], Exception | None]:
         found: list[tuple[str, Opportunity]] = []
@@ -2630,6 +2670,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                     "Internship" if internship_facets and not term else "",
                     f"https://{host}/en-US/{site}{path}",
                     _workday_publication_date(posted_on=item.get("postedOn")),
+                    defer_junior_context=True,
                 )
                 if job:
                     found.append((path, replace(job, source=f"Workday {company}")))
@@ -2649,7 +2690,8 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
     if len(search_errors) == len(terms) and not candidates:
         raise search_errors[0]
 
-    def enrich(pair: tuple[str, Opportunity]) -> Opportunity:
+    failed_details: list[str] = []
+    def enrich(pair: tuple[str, Opportunity]) -> Opportunity | None:
         path, job = pair
         reused = _cached_detail(job)
         if reused and reused.description:
@@ -2664,6 +2706,13 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 detail_company = "Rothschild & Co Redburn"
             elif re.search(r"Rothschild\s*&\s*Co\s+(?:Asset|Wealth) Management", description[:1_500], re.IGNORECASE):
                 detail_company = "Rothschild & Co Asset Management"
+            if _junior_analyst(job.title):
+                revised = _opportunity(job.title, detail_company, str(info.get("location") or job.location),
+                    job.employment or "", job.url,
+                    _workday_publication_date(info.get("startDate"), info.get("postedOn")) or job.published,
+                    _start_period(description) or _title_period(job.title), role_context=_plain_text(description))
+                return replace(revised, description=_plain_text(description)[:12_000],
+                               source=f"Workday career site · {detail_company}") if revised else None
             return replace(
                 job,
                 company=detail_company,
@@ -2674,14 +2723,20 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 source=f"Workday career site · {detail_company}",
             )
         except (requests.RequestException, ValueError, TypeError):
+            if _junior_analyst(job.title):
+                failed_details.append(job.url)
+                return None
             return job
 
-    selected = sorted(candidates.items(), key=lambda pair: -pair[1].score)[:50]
+    selected = dict(sorted(candidates.items(), key=lambda pair: -pair[1].score)[:50])
+    selected.update((path, job) for path, job in candidates.items() if _junior_analyst(job.title))
+    selected = list(selected.items())
     with ThreadPoolExecutor(max_workers=1 if company == "BBVA" else 6) as pool:
         enriched = dict(zip((path for path, _ in selected), pool.map(enrich, selected)))
-    jobs = [enriched.get(path, job) for path, job in candidates.items()]
-    if search_errors:
-        raise _PartialSourceError(jobs, [], search_failures=len(search_errors))
+    jobs = [verified for path, job in candidates.items() if (verified := enriched.get(path, job)) is not None
+            and _eligible_offer(verified)]
+    if search_errors or failed_details:
+        raise _PartialSourceError(jobs, failed_details, search_failures=len(search_errors))
     return jobs
 
 
@@ -2861,6 +2916,7 @@ def _oracle_jobs(board_name: str, board: tuple[str, str, str]) -> list[Opportuni
                 str(row.get("WorkerType") or row.get("ContractType") or ""),
                 direct_url, str(row.get("PostedDate") or row.get("PostingStartDate") or ""),
                 _start_period(description_text) or _title_period(title), role_context=description_text,
+                defer_junior_context=True,
             )
             if job:
                 job = replace(job, description=description_text[:12_000])
@@ -2901,10 +2957,13 @@ def _oracle_jobs(board_name: str, board: tuple[str, str, str]) -> list[Opportuni
         except (requests.RequestException, ValueError, TypeError):
             return replace(job, description=existing_description[:12_000])
 
-    selected = list(candidates.items())[:60]
+    selected = dict(list(candidates.items())[:60])
+    selected.update((job_id, item) for job_id, item in candidates.items() if _junior_analyst(item[0].title))
+    selected = list(selected.items())
     with ThreadPoolExecutor(max_workers=6) as pool:
         enriched = dict(zip((job_id for job_id, _ in selected), pool.map(enrich, selected)))
-    return [enriched.get(job_id, item[0]) for job_id, item in candidates.items()]
+    return [job for job_id, item in candidates.items()
+            if _eligible_offer(job := enriched.get(job_id, item[0]))]
 
 
 def _vie_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
@@ -3178,6 +3237,7 @@ def _eligible_offer(job: Opportunity) -> bool:
         # be admitted by the old substring/whole-page contract heuristics.
         return False
     return (not _excluded_employer(job.company)
+            and not (job.kind == "Graduate" and _junior_analyst(job.title) and _experienced_junior(job.description))
             and _market_relevant_with_context(job.title, job.description)
             and (job.source == "JobTeaser · sitemap" or _plausible_location(job.location)))
 

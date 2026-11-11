@@ -7,6 +7,91 @@ import pytest
 from internships_project import internships as jobs
 
 
+@pytest.mark.parametrize("title,contract,expected", [
+    ("Junior Quantitative Analyst", "CDI", "Graduate"),
+    ("Analyste junior - gestion actions", "Permanent", "Graduate"),
+    ("Jr. Equity Research Analyst", "Full time", "Graduate"),
+    ("Junior Trading Analyst Internship", "", "Stage"),
+    ("Stage Analyste Junior Trading", "", "Stage"),
+    ("Junior Trading Analyst VIE", "", "VIE"),
+    ("Senior / Junior Trading Analyst", "CDI", None),
+])
+def test_junior_classification_preserves_internships(title, contract, expected):
+    assert jobs._kind(title, contract) == expected
+
+
+def junior_offer(title="Junior Analyst", context=""):
+    return jobs._opportunity(title, "Bank", "Paris", "CDI",
+        "https://group.bnpparibas/emploi-carriere/offre-emploi/junior-analyst", "",
+        role_context=context)
+
+
+@pytest.mark.parametrize("context,expected", [
+    ("", False),
+    ("Financial analysis of companies", False),
+    ("You will join our trading desk. No experience required.", True),
+    ("Work with equity investment teams and portfolio managers.", True),
+    ("You will join our middle office. Collaborate with the trading desk.", False),
+    ("Join the trading desk. At least 3 years of experience required.", False),
+    ("Join the trading desk. Minimum of three years of experience.", False),
+    ("Trading desk. Au moins 3 ans d'expérience.", False),
+    ("Trading desk. Expérience de 3 ans minimum.", False),
+    ("Trading desk. 0-2 years of experience required.", True),
+    ("Trading desk. Three years of experience preferred.", True),
+    ("Trading desk. 12 month contract. No experience required.", True),
+])
+def test_generic_junior_requires_verified_desk_and_entry_level(context, expected):
+    assert bool(junior_offer(context=context)) is expected
+
+
+@pytest.mark.parametrize("title", ["Junior KYC Analyst", "Junior Middle Office Analyst",
+    "Junior Corporate Finance Analyst", "Junior M&A Analyst", "Junior Fund Accounting Analyst"])
+def test_junior_non_market_roles_are_excluded(title):
+    assert not junior_offer(title, "You will collaborate with our trading desk.")
+
+
+def test_greenhouse_generic_junior_uses_description(monkeypatch):
+    monkeypatch.setattr(jobs.requests, "get", lambda *a, **kw: SimpleNamespace(
+        json=lambda: {"jobs": [{"title": "Junior Analyst", "location": {"name": "Amsterdam"},
+            "absolute_url": "https://job-boards.eu.greenhouse.io/imc/jobs/123",
+            "content": "<p>You will join our trading desk. No experience required.</p>"}]},
+        raise_for_status=lambda: None))
+    found = jobs._greenhouse_jobs("imc", "IMC Trading")
+    assert len(found) == 1 and found[0].kind == "Graduate"
+    assert jobs._eligible_offer(found[0])
+
+
+@pytest.mark.parametrize("detail", ["entry", "experienced", "unavailable", "non_market"])
+def test_workday_junior_search_verifies_detail(monkeypatch, detail):
+    terms = []
+    def post(url, **kwargs):
+        term = kwargs['json']['searchText']; terms.append(term)
+        rows = [{"title": "Junior Analyst", "locationsText": "London", "externalPath": "/job/London/Junior-Analyst_123"}] if term == "Junior" else []
+        return SimpleNamespace(json=lambda: {"jobPostings": rows, "total": len(rows)}, raise_for_status=lambda: None)
+    def get(url, **kwargs):
+        if detail == "unavailable":
+            raise jobs.requests.ReadTimeout()
+        description = {"entry": "Join our trading desk. 0-2 years of experience required.",
+            "experienced": "Join our trading desk. At least 3 years of experience required.",
+            "non_market": "You will join our middle office. Collaborate with the trading desk."}[detail]
+        return SimpleNamespace(json=lambda: {"jobPostingInfo": {"location": "London", "jobDescription": description}}, raise_for_status=lambda: None)
+    monkeypatch.setattr(jobs.requests, "post", post)
+    monkeypatch.setattr(jobs.requests, "get", get)
+    monkeypatch.setattr(jobs, "_cached_detail", lambda job: None)
+    board = ("db.wd3.myworkdayjobs.com", "db", "DBWebsite")
+    if detail == "unavailable":
+        with pytest.raises(jobs._PartialSourceError) as failure:
+            jobs._workday_jobs("Deutsche Bank", board)
+        assert not failure.value.jobs
+        assert any('/Junior-Analyst_123' in url for url in failure.value.failed_urls)
+    else:
+        found = jobs._workday_jobs("Deutsche Bank", board)
+        assert len(found) == (1 if detail == "entry" else 0)
+        if found:
+            assert found[0].kind == "Graduate" and jobs._eligible_offer(found[0])
+    assert "Junior" in terms
+
+
 @pytest.mark.parametrize("title,employment,expected", [
     ("2027 MUFG UK Summer Analyst Programme: Global Client Sales", "", "Stage"),
     ("Global Markets Summer Associate Programme 2027", "Full time", "Stage"),
@@ -56,6 +141,8 @@ def test_bnp_searches_graduate_and_fixed_term_catalogues(monkeypatch, first_fail
             if first_fails:
                 raise jobs.requests.ReadTimeout()
             return []
+        if listing.endswith('/je-recherche-mon-premier-emploi'):
+            return []
         assert listing.endswith('/cdd')
         return [job,job]
     monkeypatch.setattr(jobs, '_bnp_group_jobs', collect)
@@ -67,7 +154,7 @@ def test_bnp_searches_graduate_and_fixed_term_catalogues(monkeypatch, first_fail
     else:
         found = jobs._bnp_graduate_jobs()
     assert found == [job]
-    assert len(calls) == 2
+    assert len(calls) == 3
 
 
 def test_bnp_both_graduate_catalogues_failing_is_not_empty_success(monkeypatch):
