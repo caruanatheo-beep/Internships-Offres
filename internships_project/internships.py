@@ -227,9 +227,10 @@ JOBTEASER_CACHE_SECONDS = 24 * 3600
 SOURCE_RETRY_BASE_SECONDS = 15 * 60
 SOURCE_RETRY_MAX_SECONDS = 6 * 3600
 SOURCE_CONNECTOR_VERSIONS = {
-    "Société Générale Careers": 4, "BNP Paribas": 2, "BNP Paribas CIB": 2,
+    "Société Générale Careers": 4, "BNP Paribas": 3, "BNP Paribas CIB": 2,
     "Amundi": 3, "Crédit Agricole CIB": 2, "Crédit Mutuel Arkéa": 2, "Covéa Finance": 2,
-    "DNCA": 2, "BNP Paribas Asset Management": 2, "La Banque Postale": 2,
+    "DNCA": 2, "BNP Paribas Asset Management": 3, "BNP Paribas VIE": 3,
+    "ODDO BHF": 2, "La Banque Postale": 2,
     **{name: 2 for name in WORKDAY},
     "BBVA": 3,
     "ING": 3,
@@ -1473,7 +1474,8 @@ def _bnp_group_jobs(company: str, listing_url: str) -> list[Opportunity]:
     if os.name == 'nt':
         from .background_desktop import collect_bnp
         return [Opportunity(**row) for row in collect_bnp(company, listing_url)]
-    return _bnp_group_jobs_browser(company, listing_url)
+    virtual_display = bool(os.getenv("GITHUB_ACTIONS") == "true" and os.getenv("DISPLAY"))
+    return _bnp_group_jobs_browser(company, listing_url, headless=not virtual_display)
 
 
 def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = True) -> list[Opportunity]:
@@ -1571,19 +1573,37 @@ def _oddo_jobs() -> list[Opportunity]:
                 and parsed.path.startswith("/oddo/") and parsed.path.casefold().endswith(".pdf")):
             pdf_links[url] = label
     if not pdf_links:
-        rendered = _render_public_career_page(ODDO_ALTAYS_LISTING, "a[href$='.pdf']")
-        listing = _CareerHTML()
-        listing.feed(rendered)
-        for href, label in listing.links:
-            url = urljoin(ODDO_ALTAYS_LISTING, href)
-            parsed = urlparse(url)
-            if (parsed.scheme == "https" and parsed.hostname == "recrutement.altays-progiciels.com"
-                    and parsed.path.startswith("/oddo/") and parsed.path.casefold().endswith(".pdf")):
-                pdf_links[url] = label
-    if not pdf_links:
-        if "an error has occurred" in response.text.casefold():
-            raise ValueError("moteur public Altays ODDO en erreur de chargement, aucune annonce lisible")
-        raise ValueError("liste Altays ODDO accessible, mais aucun lien PDF direct")
+        # Altays loads paginated HTML cards through this public endpoint. Error
+        # banners in the search shell are hidden templates, not source failures.
+        seen: set[str] = set()
+        for number in range(1, 51):
+            result = requests.get(
+                "https://recrutement.altays-progiciels.com/oddo/fr/offres.html",
+                params={"page": number}, timeout=(8, 25))
+            result.raise_for_status()
+            cards = _CareerHTML()
+            cards.feed(result.text)
+            links = {}
+            for href, label in cards.links:
+                parsed = urlparse(urljoin(ODDO_ALTAYS_LISTING, href))
+                if (parsed.scheme == "https" and parsed.hostname == "recrutement.altays-progiciels.com"
+                        and parsed.path.startswith("/oddo/fr/offres/") and parsed.path.endswith(".html")):
+                    links[parsed._replace(query="", fragment="").geturl()] = label
+            if not links:
+                if result.text.strip() and not seen:
+                    raise ValueError("réponse Altays sans liste d'offres reconnue")
+                break
+            if not set(links) - seen:
+                raise ValueError("pagination Altays répétée")
+            seen.update(links)
+            for url, label in links.items():
+                if _market_relevant(label):
+                    # Each official HTML detail exposes its equivalent PDF.
+                    pdf_links[url.removesuffix(".html") + ".pdf"] = label
+        else:
+            raise ValueError("pagination Altays incomplète après 50 pages")
+        if not pdf_links:
+            return []
     try:
         from pypdf import PdfReader
     except ImportError as exc:
