@@ -60,7 +60,7 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
     checks = jobs.source_checks()
     if collect:
         for name, check in checks.items():
-            if check.get("status") in {"error", "stale"}:
+            if check.get("status") in {"error", "stale"} or name.startswith("BNP Paribas") or name == "ODDO BHF":
                 diagnostic = json.dumps({"source": name, **{key: check.get(key) for key in
                     ("status", "count", "error", "cache_status")}}, ensure_ascii=True)
                 assert_public(diagnostic.encode(), "source diagnostic")

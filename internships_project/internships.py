@@ -227,7 +227,7 @@ JOBTEASER_CACHE_SECONDS = 24 * 3600
 SOURCE_RETRY_BASE_SECONDS = 15 * 60
 SOURCE_RETRY_MAX_SECONDS = 6 * 3600
 SOURCE_CONNECTOR_VERSIONS = {
-    "Société Générale Careers": 4, "BNP Paribas": 3, "BNP Paribas CIB": 2,
+    "Société Générale Careers": 4, "BNP Paribas": 3, "BNP Paribas CIB": 3,
     "Amundi": 3, "Crédit Agricole CIB": 2, "Crédit Mutuel Arkéa": 2, "Covéa Finance": 2,
     "DNCA": 2, "BNP Paribas Asset Management": 3, "BNP Paribas VIE": 3,
     "ODDO BHF": 2, "La Banque Postale": 2,
@@ -1450,7 +1450,8 @@ def _render_public_career_page(url: str, link_selector: str) -> str:
         raise ValueError("Playwright requis pour lire la liste publique rendue en JavaScript") from exc
     try:
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch()
+            browser = playwright.chromium.launch(
+                headless=not (os.getenv("GITHUB_ACTIONS") == "true" and os.getenv("DISPLAY")))
             try:
                 page = browser.new_page()
                 response = page.goto(url, wait_until="domcontentloaded", timeout=20_000)
@@ -1550,6 +1551,13 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                     raise ValueError(f"fiches BNP non lisibles ({errors[0]})")
                 if candidates:
                     return []  # Readable offers outside the filters are a successful empty collection.
+                if os.getenv("GITHUB_ACTIONS") == "true":
+                    print("BNP browser diagnostic: " + json.dumps({
+                        "listing": listing_url, "final": page.url, "title": page.title(),
+                        "links": len(listing_page.links),
+                        "job_links": [href for href, _ in listing_page.links
+                                      if "/offre-emploi/" in href or "/job-offer/" in href][:3],
+                    }, ensure_ascii=True), flush=True)
                 raise ValueError("aucun lien direct visible dans la liste BNP rendue")
             finally:
                 browser.close()
@@ -1561,10 +1569,14 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
 
 def _oddo_jobs() -> list[Opportunity]:
     """Read ODDO BHF's public Altays listing and parse official offer PDFs."""
-    response = requests.get(ODDO_ALTAYS_LISTING, timeout=(8, 25))
-    response.raise_for_status()
     listing = _CareerHTML()
-    listing.feed(response.text)
+    try:
+        response = requests.get(ODDO_ALTAYS_LISTING, timeout=(8, 25))
+        response.raise_for_status()
+        listing.feed(response.text)
+    except requests.RequestException:
+        # The legacy search shell may fail while the current results stay live.
+        pass
     pdf_links: dict[str, str] = {}
     for href, label in listing.links:
         url = urljoin(ODDO_ALTAYS_LISTING, href)
@@ -1643,6 +1655,8 @@ def _oddo_jobs() -> list[Opportunity]:
             jobs.append(replace(job, source="Site carrière · ODDO BHF Altays", description=description[:12_000]))
     if not jobs and detail_failures == min(len(pdf_links), 60):
         raise ValueError("les liens PDF ODDO sont exposés, mais aucune fiche n'a pu être chargée")
+    if detail_failures:
+        raise _PartialSourceError(jobs, [url for url, _, text in offer_details if not text])
     return jobs
 
 
@@ -2030,7 +2044,7 @@ def _bnp_cib_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
     # Some CIB internships are filed under a job domain rather than their
     # contract type. This official page has included Global Markets roles.
     archives.append(("https://careers.cib.bnpparibas/job-domain/temporary-status/", 1))
-    def read_archive(archive: tuple[str, int]) -> tuple[dict[str, tuple[str, str]], int, requests.RequestException | None]:
+    def read_archive(archive: tuple[str, int], *, browser: bool = False) -> tuple[dict[str, tuple[str, str]], int, Exception | None]:
         base, pages = archive
         found: dict[str, tuple[str, str]] = {}
         successful = 0
@@ -2038,14 +2052,18 @@ def _bnp_cib_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
         for page_number in range(1, pages + 1):
             listing = base if page_number == 1 else f"{base}page/{page_number}/"
             try:
-                response = requests.get(listing, timeout=(8, 20))
-                response.raise_for_status()
+                if browser:
+                    page_html = _render_public_career_page(listing, 'a[href*="/jobs/"]')
+                else:
+                    response = requests.get(listing, timeout=(8, 20))
+                    response.raise_for_status()
+                    page_html = response.text
                 successful += 1
-            except requests.RequestException as exc:
+            except (requests.RequestException, ValueError) as exc:
                 error = exc
                 break
             page = _CareerHTML()
-            page.feed(response.text)
+            page.feed(page_html)
             visible_text = " ".join(page.parts)
             for href, title in page.links:
                 url = urljoin(listing, href)
@@ -2074,21 +2092,39 @@ def _bnp_cib_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
                 previous = candidates.get(url)
                 candidates[url] = (title, published or (previous[1] if previous else ""))
 
+    virtual_display = os.getenv("GITHUB_ACTIONS") == "true" and bool(os.getenv("DISPLAY"))
+    if not successful_pages and virtual_display:
+        with ThreadPoolExecutor(max_workers=4, thread_name_prefix="cib-browser") as pool:
+            for found, successful, error in pool.map(lambda archive: read_archive(archive, browser=True), archives):
+                successful_pages += successful
+                last_error = error or last_error
+                candidates.update(found)
     if not successful_pages and last_error:
         raise last_error
 
+    failed_urls: list[str] = []
     def load(pair: tuple[str, tuple[str, str]]) -> Opportunity | None:
         url, (title, published) = pair
         try:
-            job = _career_detail(url, "BNP Paribas", title)
+            try:
+                job = _career_detail(url, "BNP Paribas", title)
+            except requests.RequestException:
+                if not virtual_display:
+                    raise
+                job = _career_detail(url, "BNP Paribas", title,
+                                     html_override=_render_public_career_page(url, "h1"))
             if job and not _publication_sort_value(job.published) and published:
                 return replace(job, published=published, published_inferred=False)
             return job
         except (requests.RequestException, ValueError, TypeError):
+            failed_urls.append(url)
             return None
 
     with ThreadPoolExecutor(max_workers=5) as pool:
-        return [job for job in pool.map(load, list(candidates.items())) if job]
+        jobs = [job for job in pool.map(load, list(candidates.items())) if job]
+    if failed_urls:
+        raise _PartialSourceError(jobs, failed_urls)
+    return jobs
 
 
 def _bnp_tal_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:

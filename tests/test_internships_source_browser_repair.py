@@ -19,7 +19,8 @@ def test_bnp_uses_virtual_display_only_on_github(monkeypatch, environment, headl
     browser.assert_called_once_with("BNP Paribas", "https://group.bnpparibas/listing", headless=headless)
 
 
-def test_oddo_reads_ajax_pages_and_official_pdfs(monkeypatch):
+@pytest.mark.parametrize("shell_unavailable", [False, True])
+def test_oddo_reads_ajax_pages_and_official_pdfs(monkeypatch, shell_unavailable):
     import pypdf
     description = "Localisation : Paris Type de contrat : Stage Date de publication : 10/11/2026"
     monkeypatch.setattr(pypdf, "PdfReader", lambda stream: SimpleNamespace(
@@ -29,6 +30,8 @@ def test_oddo_reads_ajax_pages_and_official_pdfs(monkeypatch):
 
     def get(url, **kwargs):
         if url == jobs.ODDO_ALTAYS_LISTING:
+            if shell_unavailable:
+                raise jobs.requests.ConnectTimeout("legacy search unavailable")
             text = '<div style="display:none">An error has occurred</div>'
         elif url == detail:
             return SimpleNamespace(content=b"synthetic PDF", raise_for_status=lambda: None)
@@ -55,3 +58,26 @@ def test_oddo_does_not_accept_repeating_or_broken_listing(monkeypatch):
         raise_for_status=lambda: None))
     with pytest.raises(ValueError, match="pagination Altays répétée"):
         jobs._oddo_jobs()
+
+
+def test_cib_retries_unreachable_archives_in_virtual_browser(monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("DISPLAY", ":99")
+    monkeypatch.setattr(jobs.requests, "get", Mock(side_effect=jobs.requests.ReadTimeout()))
+    render = Mock(return_value='<a href="/jobs/trading-intern/">Trading intern</a>')
+    monkeypatch.setattr(jobs, "_render_public_career_page", render)
+    monkeypatch.setattr(jobs, "_career_detail", lambda url, company, title: jobs._opportunity(
+        title, company, "Paris", "Stage", url, ""))
+    found = jobs._bnp_cib_jobs()
+    assert len(found) == 1
+    assert render.call_count == 10
+
+
+def test_cib_failed_details_are_not_reported_as_empty_success(monkeypatch):
+    monkeypatch.setattr(jobs.requests, "get", lambda *a, **kw: SimpleNamespace(
+        text='<a href="/jobs/trading-intern/">Trading intern</a>', raise_for_status=lambda: None))
+    monkeypatch.setattr(jobs, "_career_detail", Mock(side_effect=jobs.requests.ReadTimeout()))
+    monkeypatch.delenv("DISPLAY", raising=False)
+    with pytest.raises(jobs._PartialSourceError) as error:
+        jobs._bnp_cib_jobs()
+    assert error.value.failed_urls == {'https://careers.cib.bnpparibas/jobs/trading-intern/'}
