@@ -44,6 +44,8 @@ def test_export_only_public_fields(tmp_path, snapshot):
     assert data["offers"][0]["start_month"] == "2027-04"
     assert data["sources"]["unavailable"] == 1
     assert {p.name for p in output.iterdir()} == {"index.html", "site.css", "app.js", "marketdesk-icon.svg", "offers.json", ".nojekyll"}
+    page = (output / "index.html").read_text(encoding="utf-8")
+    assert 'site.css?v=' in page and 'app.js?v=' in page
 
 
 def test_empty_or_contaminated_build_is_refused(tmp_path, monkeypatch):

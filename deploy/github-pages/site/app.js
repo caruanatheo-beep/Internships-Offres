@@ -1,8 +1,9 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
-const controls = ["search", "category", "family", "period", "start", "sort", "recently-collected"];
+const controls = ["search", "category", "family", "period", "start"];
 const normalize = (s) => String(s || "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 let offers = [], page = 1;
+let sortMode = "rank";
 let generated = "", manualWatch = null;
 const size = 50;
 const workflowUrl = "https://github.com/caruanatheo-beep/Internships-Offres/actions/workflows/pages.yml";
@@ -22,10 +23,12 @@ function render() {
     && (!$("start").value || j.start_month && j.start_month >= $("start").value)
     && (!$("period").value || $("period").value === "daily" && j.published === today
       || $("period").value === "weekly" && j.published >= first && j.published <= today));
-  const byCollection = $("recently-collected").checked;
-  $("sort").disabled = byCollection;
+  const byCollection = sortMode === "collected";
+  for (const button of $("sort-options").querySelectorAll("button")) {
+    button.setAttribute("aria-pressed", String(button.dataset.sort === sortMode));
+  }
   if (byCollection) selected.sort((a,b) => (b.discovered_at || "").localeCompare(a.discovered_at || ""));
-  else if ($("sort").value === "recent") selected.sort((a,b) => b.published.localeCompare(a.published));
+  else if (sortMode === "recent") selected.sort((a,b) => b.published.localeCompare(a.published));
   const pages = Math.max(1, Math.ceil(selected.length / size)); page = Math.min(page, pages);
   const fragment = document.createDocumentFragment();
   for (const j of selected.slice((page-1)*size, page*size)) {
@@ -150,6 +153,9 @@ async function manualRefresh() {
   }
 }
 for (const id of controls) $(id).addEventListener(id === "search" ? "input" : "change", () => {page=1;render();});
+for (const button of $("sort-options").querySelectorAll("button")) {
+  button.addEventListener("click", () => {sortMode=button.dataset.sort;page=1;render();});
+}
 $("reload").addEventListener("click", manualRefresh);
 $("previous").addEventListener("click",()=>{page--;render();$("count").scrollIntoView({block:"start"});});
 $("next").addEventListener("click",()=>{page++;render();$("count").scrollIntoView({block:"start"});});

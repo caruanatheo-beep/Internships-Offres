@@ -87,9 +87,12 @@ Les critères géographiques et les dates de début sont calculés par le collec
 existant. La pertinence suit son classement ; recherche et filtres s'appliquent
 instantanément dans le navigateur. Aucun appel réseau n'est requis pour filtrer.
 
-Le contrôle séparé « Plus récemment récupérées d'abord », sous les filtres,
-classe les offres par leur première détection connue, indépendamment de la date
-de publication de l'employeur. Les cartes affichent alors cette date en heure de
-Paris. Le suivi est conservé dans le cache de collecte et complété par les
+La barre de tri sous les filtres propose « Pertinence », « Publication récente »
+et « Dernières récupérées ». Ce dernier choix classe les offres par leur première
+détection connue, indépendamment de la publication. Les cartes affichent alors
+cette date en heure de Paris. Les trois choix sont exclusifs et accessibles au
+clavier. Les fichiers CSS et JS portent une version calculée sur leur contenu
+pour éviter les mélanges de versions dans le cache du navigateur.
+Le suivi est conservé dans le cache de collecte et complété par les
 instantanés disponibles ; pour les anciennes offres, il indique la première
 observation encore connue, sans inventer une date à partir de leur publication.

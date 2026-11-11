@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -116,7 +117,15 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
     for name, path in assets.items():
         target = output / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, target)
+        if name == "index.html":
+            document = path.read_text(encoding="utf-8")
+            for asset in ("site.css", "app.js"):
+                version = hashlib.sha256(assets[asset].read_bytes()).hexdigest()[:12]
+                document = document.replace(f'"{asset}"', f'"{asset}?v={version}"')
+            assert_public(document.encode(), "index.html")
+            target.write_text(document, encoding="utf-8")
+        else:
+            shutil.copyfile(path, target)
     (output / "offers.json").write_bytes(payload)
     (output / ".nojekyll").touch()
     discovery_bytes = json.dumps(detected, separators=(",", ":")).encode()
