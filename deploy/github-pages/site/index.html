@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Offres de stages, VIE et graduate en finance de marché, banques et gestion d’actifs.">
+  <title>Offres · Marchés financiers</title>
+  <link rel="icon" href="favicon.png">
+  <link rel="stylesheet" href="site.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+<main>
+  <header class="masthead"><a class="brand" href="./" aria-label="Accueil des offres"><span class="brand-mark" aria-hidden="true">M</span>MarketDesk <span>Offres</span></a><span class="masthead-note">Finance de marché</span></header>
+  <section class="intro"><div><p class="eyebrow">STAGES · VIE · GRADUATE</p><h1>Les opportunités de marché</h1><p>Banques, sociétés de gestion et services titres.</p></div><span class="public-note">Offres publiques · Sans compte</span></section>
+  <section class="filters" aria-label="Rechercher des offres">
+    <div class="search-row"><label class="sr-only" for="search">Métier, entreprise ou ville</label><input id="search" type="search" placeholder="Métier, entreprise ou ville…" autocomplete="off"><button id="reload" type="button">↻ Recharger</button></div>
+    <div class="filter-grid">
+      <label>Type de contrat<select id="category"><option value="">Tous les contrats</option><option>Stages Paris</option><option>Stages International</option><option>VIE</option><option>Graduate</option></select></label>
+      <label>Métier<select id="family"><option value="">Tous métiers</option></select></label>
+      <label>Publication ou détection<select id="period"><option value="">Toutes les dates</option><option value="daily">Aujourd’hui</option><option value="weekly">7 derniers jours</option></select></label>
+      <label>Début à partir de<select id="start"><option value="">Toutes les dates</option></select></label>
+      <label>Trier par<select id="sort"><option value="rank">Pertinence</option><option value="recent">Plus récentes d’abord</option></select></label>
+    </div>
+  </section>
+  <div class="results-header"><h2 id="count">Chargement des offres…</h2><div class="freshness"><span id="updated"></span><span id="sources"></span></div></div>
+  <p id="message" role="status" aria-live="polite"></p>
+  <div id="offers" class="offers" aria-label="Liste des offres"></div>
+  <nav class="pagination" aria-label="Pages des offres"><button id="previous" type="button">← Précédent</button><span id="page"></span><button id="next" type="button">Suivant →</button></nav>
+  <footer>Collectes visées vers 8 h, 13 h et 18 h, heure de Paris · Horaires susceptibles de retard.<br>Offres publiques uniquement. Aucun CV, compte, outil IA ou suivi de candidature sur ce site.<br>Les annonces s’ouvrent sur les sites sources. GitHub peut conserver des journaux techniques d’accès.</footer>
+</main>
+<template id="offer-template"><a class="card" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><div class="card-head"><span class="logo"><img alt="" loading="lazy"><span class="initials" aria-hidden="true"></span></span><span class="company"></span><span class="kind"></span><span class="arrow" aria-hidden="true">↗</span></div><h3></h3><div class="facts"><div><small>LIEU</small><span class="location"></span></div><div><small>DÉBUT</small><span class="start"></span></div></div><div class="card-foot"><span class="family"></span><span class="date"></span></div></a></template>
+</body></html>

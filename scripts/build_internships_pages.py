@@ -1,0 +1,90 @@
+"""Export only allowlisted public offer fields to an isolated static directory."""
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from internships_project import internships as jobs
+from internships_project.public_safety import assert_public, public_job_url, validate_snapshot
+
+
+def build_site(output: Path, *, collect: bool = False) -> int:
+    if output.exists() and any(output.iterdir()):
+        raise ValueError("Build directory must be empty; existing files are never published implicitly")
+    if collect:
+        seed = ROOT / "public_seed.json"
+        if not jobs.CACHE_PATH.exists() and seed.is_file():
+            seed_bytes = seed.read_bytes()
+            assert_public(seed_bytes, "public seed")
+            previous = json.loads(seed_bytes)
+            validate_snapshot(previous)
+            baseline = [jobs.Opportunity(
+                title=j["title"], company=j["company"], location=j["location"], kind=j["kind"],
+                url=public_job_url(j["url"]), published=j["published"], score=max(0, 1000-i),
+                start_period=j["start"], family=j["family"],
+                published_inferred=j["date_label"].startswith("Détectée"),
+            ) for i, j in enumerate(previous["offers"])]
+            jobs._write_cache(datetime.fromisoformat(previous["updated"]), baseline, [])
+        offers, _, updated = jobs.refresh_opportunities(notify_email=False, fail_if_busy=True)
+    else:
+        offers, _, updated = jobs.load_opportunities(refresh=False)
+    if not offers:
+        raise ValueError("No offers available; preserve the previous deployment")
+    categories = ("Stages Paris", "Stages International", "VIE", "Graduate")
+    records = []
+    logos = {}
+    for job in jobs.matching_opportunities(offers):
+        host = jobs.COMPANY_ICON_HOSTS.get(jobs._canonical_company(job.company), "")
+        logo = jobs.COMPANY_LOGO_DIR / f"{host}.png"
+        icon = ""
+        if host and logo.is_file() and not logo.is_symlink() and logo.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
+            icon = f"logos/{logo.name}"
+            logos[icon] = logo
+        # No description, profile, tracking, raw error, token or account data.
+        records.append({
+            "title": jobs._display_offer_title(job.title), "company": job.company,
+            "location": job.location or "Non précisé", "kind": job.kind,
+            "url": public_job_url(job.url), "published": job.published,
+            "date_label": ("Détectée le " if job.published_inferred else "Publiée le ") + jobs._display_offer_date(job.published),
+            "start": jobs._display_offer_date(job.start_period), "start_month": jobs.start_month(job.start_period) or "",
+            "family": job.family, "logo": icon,
+            "categories": [category for category in categories if jobs.matching_opportunities([job], category)],
+        })
+    checks = jobs.source_checks()
+    payload = json.dumps({"updated": updated.isoformat(), "generated": datetime.now(timezone.utc).isoformat(),
+                          "sources": {"checked": len(checks),
+                                      "unavailable": sum(c.get("status") == "error" for c in checks.values()),
+                                      "retained": sum(c.get("status") == "stale" for c in checks.values())},
+                          "offers": records}, ensure_ascii=False, separators=(",", ":")).encode()
+    assert_public(payload, "offers.json")
+    validate_snapshot(json.loads(payload))
+    assets = {name: ROOT / "deploy/github-pages/site" / name for name in ("index.html", "site.css", "app.js")}
+    assets.update(logos)
+    assets["favicon.png"] = ROOT / "internships_project/assets/skema_emblem_2026.png"
+    # Validate every byte before creating the publish directory.
+    for name, path in assets.items():
+        if path.is_symlink():
+            raise ValueError("Symlink in public assets")
+        assert_public(path.read_bytes(), name)
+    output.mkdir(parents=True, exist_ok=True)
+    for name, path in assets.items():
+        target = output / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, target)
+    (output / "offers.json").write_bytes(payload)
+    (output / ".nojekyll").touch()
+    return len(records)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, default=ROOT / "_site")
+    parser.add_argument("--collect", action="store_true")
+    args = parser.parse_args()
+    print(f"Static site built: {build_site(args.output, collect=args.collect)} public offers")

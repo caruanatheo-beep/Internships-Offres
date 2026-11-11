@@ -1,0 +1,7 @@
+.env
+.env.*
+.collection-cache/
+_site/
+__pycache__/
+.pytest_cache/
+*.pyc
