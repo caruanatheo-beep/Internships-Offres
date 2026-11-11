@@ -4,10 +4,7 @@ const controls = ["search", "category", "family", "period", "start"];
 const normalize = (s) => String(s || "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 let offers = [], page = 1;
 let sortMode = "rank";
-let generated = "", manualWatch = null;
 const size = 50;
-const workflowUrl = "https://github.com/caruanatheo-beep/Internships-Offres/actions/workflows/pages.yml";
-const runsUrl = "https://api.github.com/repos/caruanatheo-beep/Internships-Offres/actions/workflows/pages.yml/runs?per_page=10";
 function safeLink(value) {
   try { const u = new URL(value); return u.protocol === "https:" && !u.username && !u.password ? u.href : null; }
   catch { return null; }
@@ -55,14 +52,12 @@ function options(id, pairs) {
   for (const [value,label] of pairs) { const o = document.createElement("option"); o.value = value; o.textContent = label; $(id).append(o); }
 }
 async function load() {
-  $("reload").disabled = true;
   try {
     const response = await fetch("offers.json", {cache: "no-cache", credentials: "omit"});
     if (!response.ok) throw new Error("load");
     const data = await response.json();
     if (!Array.isArray(data.offers)) throw new Error("schema");
     offers = data.offers;
-    generated = data.generated;
     const family = $("family").value, start = $("start").value;
     options("family", [...new Set(offers.map(j=>j.family).filter(Boolean))].sort().map(v=>[v,v]));
     const months = new Set(offers.map(j=>j.start_month).filter(Boolean));
@@ -72,84 +67,16 @@ async function load() {
     $("family").value = family; $("start").value = start;
     if ($("family").selectedIndex < 0) $("family").selectedIndex = 0;
     if ($("start").selectedIndex < 0) $("start").selectedIndex = 0;
-    $("updated").textContent = "Mis à jour le " + new Intl.DateTimeFormat("fr-FR", {dateStyle:"short",timeStyle:"short",timeZone:"Europe/Paris"}).format(new Date(data.updated)) + " · Paris";
     const s = data.sources;
-    $("sources").textContent = s.checked ? `${s.checked} sources vérifiées · ${s.unavailable} indisponibles · ${s.retained} avec offres conservées` : "";
+    $("updated").textContent = "Actualisé le " + new Intl.DateTimeFormat("fr-FR", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Paris"}).format(new Date(data.updated)) + (s.unavailable ? " · Collecte partielle" : "");
+    $("updated").title = `Heure de Paris · ${s.checked} sources · ${s.unavailable} indisponibles · ${s.retained} collectes partielles`;
     $("message").textContent = ""; render();
   } catch { $("message").textContent = "Impossible de charger les nouvelles données. Réessaie dans un instant. Les offres déjà affichées sont conservées."; }
-  finally { $("reload").disabled = false; }
-}
-function refreshStatus(text, link = workflowUrl) {
-  $("refresh-status").textContent = text;
-  $("refresh-run").href = link;
-  $("refresh-run").hidden = false;
-}
-function stopManualWatch() {
-  if (manualWatch) clearInterval(manualWatch.timer);
-  manualWatch = null;
-}
-async function workflowRuns() {
-  // Public metadata only. No token, cookie or write request is sent by this site.
-  const response = await fetch(runsUrl, {cache:"no-store", credentials:"omit", headers:{Accept:"application/vnd.github+json"}});
-  if (!response.ok) throw new Error("workflow status");
-  const data = await response.json();
-  if (!Array.isArray(data.workflow_runs)) throw new Error("workflow schema");
-  return data.workflow_runs;
-}
-async function checkManualRun() {
-  const watch = manualWatch;
-  if (!watch || watch.checking) return;
-  if (Date.now() - watch.started > 30*60*1000) {
-    refreshStatus("Le suivi automatique s’arrête après 30 minutes. Vérifie le résultat sur GitHub.");
-    stopManualWatch(); return;
-  }
-  watch.checking = true;
-  try {
-    const runs = await workflowRuns();
-    if (manualWatch !== watch) return;
-    const run = watch.runId ? runs.find(r=>r.id === watch.runId) : runs.find(r=>!watch.baseline.has(r.id) && r.event === "workflow_dispatch");
-    if (!run) return;
-    watch.runId = run.id;
-    const link = `https://github.com/caruanatheo-beep/Internships-Offres/actions/runs/${run.id}`;
-    if (run.status !== "completed") {
-      refreshStatus("Collecte lancée sur GitHub. Les nouvelles offres apparaîtront après publication.", link); return;
-    }
-    if (run.conclusion !== "success") {
-      refreshStatus("La collecte n’a pas abouti. Les dernières offres publiées restent disponibles ; consulte le résultat sur GitHub.", link);
-      stopManualWatch(); return;
-    }
-    await load();
-    if (manualWatch !== watch) return;
-    if (generated !== watch.generated) {
-      refreshStatus("Collecte et publication terminées. Les offres affichées sont à jour.", link);
-      stopManualWatch();
-    } else refreshStatus("Collecte réussie. En attente de la propagation de la publication…", link);
-  } catch {
-    refreshStatus("Le suivi GitHub est momentanément indisponible. Tu peux consulter l’exécution sur GitHub ; la collecte continue indépendamment.");
-    stopManualWatch();
-  } finally { watch.checking = false; }
-}
-async function manualRefresh() {
-  stopManualWatch();
-  // GitHub authenticates the owner and confirms the dispatch on its own domain.
-  window.open(workflowUrl, "_blank", "noopener,noreferrer");
-  refreshStatus("Dans GitHub, clique sur « Run workflow », puis confirme. Le site détectera le lancement automatiquement.");
-  try {
-    const runs = await workflowRuns();
-    const active = runs.find(r=>["queued","in_progress","waiting","requested","pending"].includes(r.status));
-    manualWatch = {baseline:new Set(runs.map(r=>r.id)), runId:active?.id, generated,
-                   started:Date.now(), checking:false, timer:null};
-    manualWatch.timer = setInterval(checkManualRun, 60000);
-    if (active) await checkManualRun();
-  } catch {
-    refreshStatus("Confirme le lancement dans GitHub. Le suivi automatique n’est pas disponible ; les offres seront publiées à la fin de l’exécution.");
-  }
 }
 for (const id of controls) $(id).addEventListener(id === "search" ? "input" : "change", () => {page=1;render();});
 for (const button of $("sort-options").querySelectorAll("button")) {
   button.addEventListener("click", () => {sortMode=button.dataset.sort;page=1;render();});
 }
-$("reload").addEventListener("click", manualRefresh);
 $("previous").addEventListener("click",()=>{page--;render();$("count").scrollIntoView({block:"start"});});
 $("next").addEventListener("click",()=>{page++;render();$("count").scrollIntoView({block:"start"});});
 load();

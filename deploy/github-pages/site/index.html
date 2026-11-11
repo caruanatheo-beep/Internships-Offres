@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self' https://api.github.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="description" content="Offres de stages, VIE et graduate en finance de marché, banques et gestion d’actifs.">
   <title>Offres · Marchés financiers</title>
@@ -16,7 +16,7 @@
   <header class="masthead"><a class="brand" href="./" aria-label="Accueil des offres"><span class="brand-mark" aria-hidden="true">M</span>MarketDesk <span>Offres</span></a><span class="masthead-note">Finance de marché</span></header>
   <section class="intro"><div><p class="eyebrow">STAGES · VIE · GRADUATE</p><h1>Les opportunités de marché</h1><p>Banques, sociétés de gestion et services titres.</p></div><span class="public-note">Offres publiques · Sans compte</span></section>
   <section class="filters" aria-label="Rechercher des offres">
-    <div class="search-row"><label class="sr-only" for="search">Métier, entreprise ou ville</label><input id="search" type="search" placeholder="Métier, entreprise ou ville…" autocomplete="off"><button id="reload" type="button">↻ Recharger</button></div>
+    <div class="search-row"><label class="sr-only" for="search">Métier, entreprise ou ville</label><input id="search" type="search" placeholder="Métier, entreprise ou ville…" autocomplete="off"></div>
     <div class="filter-grid">
       <label>Type de contrat<select id="category"><option value="">Tous les contrats</option><option>Stages Paris</option><option>Stages International</option><option>VIE</option><option>Graduate</option></select></label>
       <label>Métier<select id="family"><option value="">Tous métiers</option></select></label>
@@ -25,12 +25,11 @@
     </div>
   </section>
   <div class="sort-toolbar"><span class="sort-label" id="sort-label">Trier les offres</span><div class="sort-options" id="sort-options" role="group" aria-labelledby="sort-label"><button type="button" data-sort="rank" aria-pressed="true" title="Poste et localisation : 50 %, période de début : 35 %, proximité d’avril 2027 : 15 %.">Pertinence</button><button type="button" data-sort="recent" aria-pressed="false">Publication récente</button></div></div>
-  <div class="results-header"><h2 id="count">Chargement des offres…</h2><div class="freshness"><span id="updated"></span><span id="sources"></span></div></div>
+  <div class="results-header"><h2 id="count">Chargement des offres…</h2><div class="freshness"><span id="updated"></span></div></div>
   <p id="message" role="status" aria-live="polite"></p>
-  <div class="refresh-progress"><span id="refresh-status" role="status" aria-live="polite"></span><a id="refresh-run" hidden target="_blank" rel="noopener noreferrer">Ouvrir GitHub ↗</a></div>
   <div id="offers" class="offers" aria-label="Liste des offres"></div>
   <nav class="pagination" aria-label="Pages des offres"><button id="previous" type="button">← Précédent</button><span id="page"></span><button id="next" type="button">Suivant →</button></nav>
-  <footer>Collectes toutes les 2 h, de 6 h 07 à 2 h 07 le lendemain, heure de Paris · Horaires susceptibles de retard.<br>« Recharger » ouvre GitHub : confirme avec « Run workflow ». Le site suit la collecte et recharge les offres après publication.<br>Offres publiques uniquement. Aucun CV, compte, outil IA ou suivi de candidature sur ce site.<br>Les annonces s’ouvrent sur les sites sources. GitHub peut conserver des journaux techniques d’accès.</footer>
+  <footer>Offres publiques · Actualisation automatique · Hébergé sur GitHub Pages, qui peut conserver des journaux techniques d’accès.</footer>
 </main>
 <template id="offer-template"><a class="card" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><div class="card-head"><span class="logo"><img alt="" loading="lazy"><span class="initials" aria-hidden="true"></span></span><span class="company"></span><span class="kind"></span><span class="arrow" aria-hidden="true">↗</span></div><h3></h3><div class="facts"><div><small>LIEU</small><span class="location"></span></div><div><small>DÉBUT</small><span class="start"></span></div></div><div class="card-foot"><span class="family"></span><span class="date"></span></div></a></template>
 </body></html>

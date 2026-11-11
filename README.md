@@ -30,13 +30,12 @@ Les horaires peuvent subir des retards.
 
 Dans Settings → Pages, choisir « GitHub Actions ». Activer HTTPS. Le workflow
 « Collect and publish public offers » peut être lancé manuellement depuis Actions.
-Il n'utilise que des endpoints publics et un navigateur sans interface.
-Le bouton « Recharger » ouvre la page du workflow GitHub. Le propriétaire se
-connecte à GitHub et confirme « Run workflow ». Ce passage est nécessaire :
-aucun jeton d'écriture n'est intégré au site public. Le site lit ensuite les
-métadonnées publiques de l'exécution, une fois par minute pendant 30 minutes au
-maximum, et recharge les offres après une publication réussie. Une erreur de
-suivi n'interrompt pas la collecte GitHub. Les données affichées restent disponibles.
+Il n'utilise que des endpoints publics et un navigateur sur écran virtuel.
+L'actualisation manuelle se lance uniquement depuis GitHub Actions, en étant
+connecté avec un compte disposant des droits d'écriture sur le dépôt, puis en
+confirmant « Run workflow ». Le site public ne contient aucun bouton de lancement,
+jeton GitHub, lien d'administration ou suivi des exécutions. Les collectes
+automatiques restent actives aux horaires configurés.
 Une collecte manuelle contourne les caches des sources ; les collectes planifiées
 conservent leurs délais de cache pour éviter de surcharger les sites carrières.
 Certaines sources peuvent refuser les IP des centres de données : l'état affiché
