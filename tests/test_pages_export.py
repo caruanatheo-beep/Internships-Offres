@@ -133,23 +133,3 @@ def test_frontend_has_no_external_services_or_unsafe_html():
     assert "Content-Security-Policy" in html and "default-src 'none'" in html
     assert "unsafe-inline" not in html and "unsafe-eval" not in html
 
-
-def test_discovery_order_uses_collection_history_not_posting_date(tmp_path, snapshot, offer, monkeypatch):
-    from dataclasses import replace
-    old = replace(offer, url="https://careers.example.com/old", published="2026-11-11")
-    newly_found = replace(offer, url="https://careers.example.com/new", published="2026-09-01")
-    snapshot.return_value = ([old, newly_found], [], datetime(2026, 11, 11, 12, tzinfo=timezone.utc))
-    monkeypatch.setattr(internships, "_read_history_document", lambda: {
-        "baseline": {"updated": "2026-11-10T08:00:00+00:00", "jobs": [{"url": old.url, "published": old.published}]},
-        "snapshots": [{"updated": "2026-11-11T12:00:00+00:00", "jobs": [{"url": old.url}, {"url": newly_found.url}]}],
-    })
-    builder.build_site(tmp_path / "site")
-    data = json.loads((tmp_path / "site/offers.json").read_bytes())
-    dates = {row["url"]: row["discovered_at"] for row in data["offers"]}
-    assert dates[old.url] == "2026-11-10T08:00:00+00:00"
-    assert dates[newly_found.url] == "2026-11-11T12:00:00+00:00"
-    monkeypatch.setattr(internships, "_read_history_document", lambda: {})
-    snapshot.return_value = ([old, newly_found], [], datetime(2026, 11, 12, tzinfo=timezone.utc))
-    builder.build_site(tmp_path / "again")
-    repeated = json.loads((tmp_path / "again/offers.json").read_bytes())
-    assert {row["url"]: row["discovered_at"] for row in repeated["offers"]} == dates

@@ -15,45 +15,6 @@ from internships_project import internships as jobs
 from internships_project.public_safety import assert_public, public_job_url, validate_snapshot
 
 
-def discovery_dates(offers: list, updated: datetime) -> tuple[Path, dict[str, str]]:
-    path = jobs.CACHE_PATH.with_name("pages_discovery_dates.json")
-    try:
-        dates = json.loads(path.read_bytes())
-    except FileNotFoundError:
-        dates = {}
-    if not isinstance(dates, dict):
-        raise ValueError("Invalid offer discovery history")
-
-    def remember(url: str, stamp: str):
-        parsed = datetime.fromisoformat(stamp)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        value = parsed.astimezone(timezone.utc).isoformat()
-        dates[url] = min(dates.get(url, value), value)
-
-    for url, stamp in list(dates.items()):
-        remember(url, stamp)
-    seed = ROOT / "public_seed.json"
-    if seed.is_file():
-        document = json.loads(seed.read_bytes())
-        validate_snapshot(document)
-        for record in document["offers"]:
-            if record.get("discovered_at"):
-                remember(record["url"], record["discovered_at"])
-    history = jobs._read_history_document()
-    for snapshot in [history.get("baseline"), *(history.get("snapshots") or [])]:
-        if not isinstance(snapshot, dict) or not snapshot.get("updated"):
-            continue
-        for record in snapshot.get("jobs") or []:
-            if isinstance(record, dict) and record.get("url"):
-                # A posting date is not evidence of when our collector found the offer.
-                remember(record["url"], snapshot["updated"])
-    for offer in offers:
-        if offer.url not in dates:
-            remember(offer.url, updated.isoformat())
-    return path, dates
-
-
 def build_site(output: Path, *, collect: bool = False, force: bool = False) -> int:
     if output.exists() and any(output.iterdir()):
         raise ValueError("Build directory must be empty; existing files are never published implicitly")
@@ -76,7 +37,6 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
         offers, _, updated = jobs.load_opportunities(refresh=False)
     if not offers:
         raise ValueError("No offers available; preserve the previous deployment")
-    discovery_path, detected = discovery_dates(offers, updated)
     categories = ("Stages Paris", "Stages International", "VIE", "Graduate")
     records = []
     logos = {}
@@ -92,7 +52,6 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
             "title": jobs._display_offer_title(job.title), "company": job.company,
             "location": job.location or "Non précisé", "kind": job.kind,
             "url": public_job_url(job.url), "published": job.published,
-            "discovered_at": detected[job.url],
             "date_label": ("Détectée le " if job.published_inferred else "Publiée le ") + jobs._display_offer_date(job.published),
             "start": jobs._display_offer_date(job.start_period), "start_month": jobs.start_month(job.start_period) or "",
             "family": job.family, "logo": icon,
@@ -128,12 +87,6 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
             shutil.copyfile(path, target)
     (output / "offers.json").write_bytes(payload)
     (output / ".nojekyll").touch()
-    discovery_bytes = json.dumps(detected, separators=(",", ":")).encode()
-    assert_public(discovery_bytes, "public discovery dates")
-    discovery_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = discovery_path.with_suffix(".tmp")
-    temporary.write_bytes(discovery_bytes)
-    temporary.replace(discovery_path)
     return len(records)
 
 
