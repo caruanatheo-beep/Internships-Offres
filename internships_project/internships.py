@@ -227,9 +227,9 @@ JOBTEASER_CACHE_SECONDS = 24 * 3600
 SOURCE_RETRY_BASE_SECONDS = 15 * 60
 SOURCE_RETRY_MAX_SECONDS = 6 * 3600
 SOURCE_CONNECTOR_VERSIONS = {
-    "Société Générale Careers": 4, "BNP Paribas": 3, "BNP Paribas CIB": 3,
+    "Société Générale Careers": 4, "BNP Paribas": 4, "BNP Paribas CIB": 3,
     "Amundi": 3, "Crédit Agricole CIB": 2, "Crédit Mutuel Arkéa": 2, "Covéa Finance": 2,
-    "DNCA": 2, "BNP Paribas Asset Management": 3, "BNP Paribas VIE": 3,
+    "DNCA": 2, "BNP Paribas Asset Management": 4, "BNP Paribas VIE": 4,
     "ODDO BHF": 2, "La Banque Postale": 2,
     **{name: 2 for name in WORKDAY},
     "BBVA": 3,
@@ -1486,7 +1486,8 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
     except ImportError as exc:
         raise ValueError("Playwright requis pour lire les offres publiques BNP Paribas") from exc
 
-    host, path_prefix = "group.bnpparibas", "/emploi-carriere/offre-emploi/"
+    host = "group.bnpparibas"
+    path_prefixes = ("/emploi-carriere/offre-emploi/", "/en/careers/job-offer/")
     errors: list[str] = []
     candidates: dict[str, str] = {}
     try:
@@ -1498,7 +1499,7 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                 if response is not None and response.status >= 400:
                     raise ValueError(f"liste BNP en HTTP {response.status}; aucun contournement tenté")
                 try:
-                    page.locator(f'a[href*="{path_prefix}"]').first.wait_for(timeout=8_000)
+                    page.locator(','.join(f'a[href*="{prefix}"]' for prefix in path_prefixes)).first.wait_for(timeout=8_000)
                 except PlaywrightTimeoutError:
                     pass
 
@@ -1506,7 +1507,7 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                 for _ in range(40):
                     hrefs = page.locator("a").evaluate_all("els => els.map(a => a.href)")
                     before = len({href for href in hrefs if urlparse(href).hostname == host
-                                  and urlparse(href).path.startswith(path_prefix)})
+                                  and urlparse(href).path.startswith(path_prefixes)})
                     more = page.get_by_text(re.compile(r"voir plus d.?offres", re.IGNORECASE)).last
                     try:
                         if not more.is_visible(timeout=500):
@@ -1517,18 +1518,21 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                         break
                     hrefs = page.locator("a").evaluate_all("els => els.map(a => a.href)")
                     after = len({href for href in hrefs if urlparse(href).hostname == host
-                                 and urlparse(href).path.startswith(path_prefix)})
+                                 and urlparse(href).path.startswith(path_prefixes)})
                     if after <= before:
                         break
 
                 listing_page = _CareerHTML()
                 listing_page.feed(page.content())
+                direct_links = 0
                 for href, label in listing_page.links:
                     offer_url = urljoin(listing_url, href)
                     parsed = urlparse(offer_url)
                     if (parsed.scheme == "https" and parsed.hostname == host
-                            and parsed.path.startswith(path_prefix) and _market_relevant(label)):
-                        candidates[offer_url] = label
+                            and parsed.path.startswith(path_prefixes)):
+                        direct_links += 1
+                        if _market_relevant(label):
+                            candidates[offer_url] = label
 
                 detail_company = "BNP Paribas" if company == "BNP Paribas Asset Management" else company
                 jobs: list[Opportunity] = []
@@ -1549,7 +1553,7 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                     return list({job.url: job for job in jobs}.values())
                 if errors:
                     raise ValueError(f"fiches BNP non lisibles ({errors[0]})")
-                if candidates:
+                if direct_links:
                     return []  # Readable offers outside the filters are a successful empty collection.
                 if os.getenv("GITHUB_ACTIONS") == "true":
                     print("BNP browser diagnostic: " + json.dumps({

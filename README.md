@@ -81,6 +81,14 @@ initiale publique, pas une garantie de fraîcheur. La date affichée fait foi.
 
 `python scripts/build_internships_pages.py --collect --output _site`
 
+Sur GitHub Actions, la collecte tourne sous `xvfb-run` : Chromium dispose d'un
+écran virtuel pour les pages BNP rendues en JavaScript. Aucune fenêtre ne
+s'ouvre sur l'ordinateur de l'utilisateur, aucun compte BNP n'est utilisé.
+Le lecteur PDF `pypdf` est installé pour les fiches ODDO et Comgest. Les erreurs
+des sources publiques sont diagnostiquées dans les logs de collecte, sans
+paramètres SMTP ni clés IA. Une liste lisible sans poste correspondant aux
+critères est distinguée d'un échec de chargement.
+
 Le répertoire de sortie doit être vide. Pour une prévisualisation hors ligne,
 préparer un cache d'offres publiques puis omettre `--collect`.
 Les critères géographiques et les dates de début sont calculés par le collecteur

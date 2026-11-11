@@ -1,6 +1,6 @@
 """Public-source repairs: ordinary virtual browser and Altays pagination."""
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
 import pytest
 
@@ -81,3 +81,17 @@ def test_cib_failed_details_are_not_reported_as_empty_success(monkeypatch):
     with pytest.raises(jobs._PartialSourceError) as error:
         jobs._bnp_cib_jobs()
     assert error.value.failed_urls == {'https://careers.cib.bnpparibas/jobs/trading-intern/'}
+
+
+@pytest.mark.parametrize("prefix", ["/emploi-carriere/offre-emploi/", "/en/careers/job-offer/"])
+def test_bnp_readable_non_market_jobs_are_empty_success(monkeypatch, prefix):
+    from playwright import sync_api
+    provider = MagicMock()
+    browser = provider.__enter__.return_value.chromium.launch.return_value
+    page = browser.new_page.return_value
+    page.goto.return_value.status = 200
+    page.get_by_text.return_value.last.is_visible.return_value = False
+    page.content.return_value = f'<a href="{prefix}stage-rh">Stage Ressources humaines</a>'
+    monkeypatch.setattr(sync_api, "sync_playwright", lambda: provider)
+    assert jobs._bnp_group_jobs_browser("BNP Paribas", "https://group.bnpparibas/listing") == []
+    browser.close.assert_called_once()
