@@ -14,7 +14,7 @@ from internships_project import internships as jobs
 from internships_project.public_safety import assert_public, public_job_url, validate_snapshot
 
 
-def build_site(output: Path, *, collect: bool = False) -> int:
+def build_site(output: Path, *, collect: bool = False, force: bool = False) -> int:
     if output.exists() and any(output.iterdir()):
         raise ValueError("Build directory must be empty; existing files are never published implicitly")
     if collect:
@@ -31,7 +31,7 @@ def build_site(output: Path, *, collect: bool = False) -> int:
                 published_inferred=j["date_label"].startswith("Détectée"),
             ) for i, j in enumerate(previous["offers"])]
             jobs._write_cache(datetime.fromisoformat(previous["updated"]), baseline, [])
-        offers, _, updated = jobs.refresh_opportunities(notify_email=False, fail_if_busy=True)
+        offers, _, updated = jobs.refresh_opportunities(force=force, notify_email=False, fail_if_busy=True)
     else:
         offers, _, updated = jobs.load_opportunities(refresh=False)
     if not offers:
@@ -86,5 +86,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=ROOT / "_site")
     parser.add_argument("--collect", action="store_true")
+    parser.add_argument("--force", action="store_true", help="Recheck source caches during a manual collection")
     args = parser.parse_args()
-    print(f"Static site built: {build_site(args.output, collect=args.collect)} public offers")
+    if args.force and not args.collect:
+        parser.error("--force requires --collect")
+    print(f"Static site built: {build_site(args.output, collect=args.collect, force=args.force)} public offers")

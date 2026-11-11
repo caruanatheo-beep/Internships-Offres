@@ -90,7 +90,32 @@ def test_collection_never_sends_email(tmp_path, monkeypatch, offer):
     monkeypatch.setattr(internships, "refresh_opportunities", collect)
     monkeypatch.setattr(internships, "CACHE_PATH", tmp_path / "cache.json")
     builder.build_site(tmp_path / "site", collect=True)
-    collect.assert_called_once_with(notify_email=False, fail_if_busy=True)
+    collect.assert_called_once_with(force=False, notify_email=False, fail_if_busy=True)
+
+
+def test_manual_collection_bypasses_source_cache(tmp_path, monkeypatch, offer):
+    collect = Mock(return_value=([offer], [], datetime.now(timezone.utc)))
+    monkeypatch.setattr(internships, "refresh_opportunities", collect)
+    monkeypatch.setattr(internships, "CACHE_PATH", tmp_path / "cache.json")
+    builder.build_site(tmp_path / "site", collect=True, force=True)
+    collect.assert_called_once_with(force=True, notify_email=False, fail_if_busy=True)
+
+
+def test_manual_refresh_also_rechecks_jobteaser_sitemap(tmp_path, monkeypatch, offer):
+    from dataclasses import asdict
+    import requests
+    cached = tmp_path / "jobteaser.json"
+    cached.write_text(json.dumps({"version": 2, "updated": datetime.now(timezone.utc).isoformat(),
+                                  "jobs": [asdict(offer)]}), encoding="utf-8")
+    monkeypatch.setattr(internships, "JOBTEASER_CACHE_PATH", cached)
+    network = Mock(side_effect=requests.RequestException("unavailable"))
+    monkeypatch.setattr(internships.requests, "get", network)
+    monkeypatch.setattr(internships, "_force_source_refresh", False)
+    assert internships._jobteaser_jobs()
+    network.assert_not_called()
+    monkeypatch.setattr(internships, "_force_source_refresh", True)
+    assert internships._jobteaser_jobs()  # Retain the previous offers if the public source fails.
+    network.assert_called_once()
 
 
 def test_frontend_has_no_external_services_or_unsafe_html():

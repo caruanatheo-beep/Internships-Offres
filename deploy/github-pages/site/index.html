@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self' https://api.github.com; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="description" content="Offres de stages, VIE et graduate en finance de marché, banques et gestion d’actifs.">
   <title>Offres · Marchés financiers</title>
@@ -27,9 +27,10 @@
   </section>
   <div class="results-header"><h2 id="count">Chargement des offres…</h2><div class="freshness"><span id="updated"></span><span id="sources"></span></div></div>
   <p id="message" role="status" aria-live="polite"></p>
+  <div class="refresh-progress"><span id="refresh-status" role="status" aria-live="polite"></span><a id="refresh-run" hidden target="_blank" rel="noopener noreferrer">Ouvrir GitHub ↗</a></div>
   <div id="offers" class="offers" aria-label="Liste des offres"></div>
   <nav class="pagination" aria-label="Pages des offres"><button id="previous" type="button">← Précédent</button><span id="page"></span><button id="next" type="button">Suivant →</button></nav>
-  <footer>Collectes visées vers 8 h, 13 h et 18 h, heure de Paris · Horaires susceptibles de retard.<br>Offres publiques uniquement. Aucun CV, compte, outil IA ou suivi de candidature sur ce site.<br>Les annonces s’ouvrent sur les sites sources. GitHub peut conserver des journaux techniques d’accès.</footer>
+  <footer>Collectes toutes les 2 h, de 6 h 07 à 2 h 07 le lendemain, heure de Paris · Horaires susceptibles de retard.<br>« Recharger » ouvre GitHub : confirme avec « Run workflow ». Le site suit la collecte et recharge les offres après publication.<br>Offres publiques uniquement. Aucun CV, compte, outil IA ou suivi de candidature sur ce site.<br>Les annonces s’ouvrent sur les sites sources. GitHub peut conserver des journaux techniques d’accès.</footer>
 </main>
 <template id="offer-template"><a class="card" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><div class="card-head"><span class="logo"><img alt="" loading="lazy"><span class="initials" aria-hidden="true"></span></span><span class="company"></span><span class="kind"></span><span class="arrow" aria-hidden="true">↗</span></div><h3></h3><div class="facts"><div><small>LIEU</small><span class="location"></span></div><div><small>DÉBUT</small><span class="start"></span></div></div><div class="card-foot"><span class="family"></span><span class="date"></span></div></a></template>
 </body></html>

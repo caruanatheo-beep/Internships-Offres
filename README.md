@@ -2,8 +2,10 @@
 
 Site statique consacré aux stages, VIE et programmes graduate en finance de marché.
 GitHub Pages sert uniquement les fichiers HTML/CSS/JS, logos PNG et offres publiques.
-La collecte Python s'exécute dans GitHub Actions à 8 h 07, 13 h 07 et 18 h 07
-Europe/Paris. Elle reste indépendante du PC. Les horaires peuvent subir des retards.
+La collecte Python s'exécute toutes les deux heures de 6 h 07 à 2 h 07 le lendemain,
+en Europe/Paris (6, 8, 10, 12, 14, 16, 18, 20, 22, 0 et 2 h 07).
+Elle couvre les journées parisienne et américaine, indépendamment du PC.
+Les horaires peuvent subir des retards.
 
 ## Sécurité
 
@@ -26,6 +28,14 @@ Europe/Paris. Elle reste indépendante du PC. Les horaires peuvent subir des ret
 Dans Settings → Pages, choisir « GitHub Actions ». Activer HTTPS. Le workflow
 « Collect and publish public offers » peut être lancé manuellement depuis Actions.
 Il n'utilise que des endpoints publics et un navigateur sans interface.
+Le bouton « Recharger » ouvre la page du workflow GitHub. Le propriétaire se
+connecte à GitHub et confirme « Run workflow ». Ce passage est nécessaire :
+aucun jeton d'écriture n'est intégré au site public. Le site lit ensuite les
+métadonnées publiques de l'exécution, une fois par minute pendant 30 minutes au
+maximum, et recharge les offres après une publication réussie. Une erreur de
+suivi n'interrompt pas la collecte GitHub. Les données affichées restent disponibles.
+Une collecte manuelle contourne les caches des sources ; les collectes planifiées
+conservent leurs délais de cache pour éviter de surcharger les sites carrières.
 Certaines sources peuvent refuser les IP des centres de données : l'état affiché
 signale les indisponibilités et le cache conserve les offres précédentes.
 Une collecte sans aucune offre bloque la publication et conserve l'ancien site.

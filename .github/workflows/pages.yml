@@ -5,7 +5,7 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: '7 8,13,18 * * *'
+    - cron: '7 0,2,6-22/2 * * *'
       timezone: Europe/Paris
 
 permissions:
@@ -40,7 +40,11 @@ jobs:
       - name: Install background browser
         run: python -m playwright install --with-deps chromium
       - name: Collect public employer offers and build static site
+        if: github.event_name != 'workflow_dispatch'
         run: python scripts/build_internships_pages.py --collect --output _site
+      - name: Manually refresh all public sources and build static site
+        if: github.event_name == 'workflow_dispatch'
+        run: python scripts/build_internships_pages.py --collect --force --output _site
       - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .collection-cache

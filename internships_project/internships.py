@@ -2305,14 +2305,14 @@ def _jobteaser_from_sitemap_url(url: str) -> Opportunity | None:
 
 
 def _jobteaser_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
-    """Read public sitemap URLs once daily; JobTeaser detail pages are not queried."""
+    """Read public sitemaps daily, or on forced refresh; no authenticated pages."""
     now = datetime.now(timezone.utc)
     cached: list[Opportunity] = []
     try:
         payload = json.loads(JOBTEASER_CACHE_PATH.read_text(encoding="utf-8"))
         if payload.get("version") == 2:
             cached = [Opportunity(**row) for row in payload.get("jobs", [])]
-            if (now - datetime.fromisoformat(payload["updated"])).total_seconds() < JOBTEASER_CACHE_SECONDS:
+            if not _force_source_refresh and (now - datetime.fromisoformat(payload["updated"])).total_seconds() < JOBTEASER_CACHE_SECONDS:
                 return [replace(job, family=_family(job.title)) for job in cached]
     except (OSError, ValueError, TypeError, KeyError):
         pass
