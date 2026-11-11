@@ -58,6 +58,13 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
             "categories": [category for category in categories if jobs.matching_opportunities([job], category)],
         })
     checks = jobs.source_checks()
+    if collect:
+        for name, check in checks.items():
+            if check.get("status") in {"error", "stale"}:
+                diagnostic = json.dumps({"source": name, **{key: check.get(key) for key in
+                    ("status", "count", "error", "cache_status")}}, ensure_ascii=True)
+                assert_public(diagnostic.encode(), "source diagnostic")
+                print("Source diagnostic: " + diagnostic, flush=True)
     payload = json.dumps({"updated": updated.isoformat(), "generated": datetime.now(timezone.utc).isoformat(),
                           "sources": {"checked": len(checks),
                                       "unavailable": sum(c.get("status") == "error" for c in checks.values()),
