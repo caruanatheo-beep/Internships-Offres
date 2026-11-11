@@ -22,9 +22,10 @@
       <label>Métier<select id="family"><option value="">Tous métiers</option></select></label>
       <label>Publication ou détection<select id="period"><option value="">Toutes les dates</option><option value="daily">Aujourd’hui</option><option value="weekly">7 derniers jours</option></select></label>
       <label>Début à partir de<select id="start"><option value="">Toutes les dates</option></select></label>
-      <label>Trier par<select id="sort"><option value="rank">Pertinence</option><option value="recent">Plus récentes d’abord</option></select></label>
+      <label>Trier par<select id="sort"><option value="rank">Pertinence</option><option value="recent">Publication récente</option></select></label>
     </div>
   </section>
+  <div class="sort-toolbar"><label class="sort-toggle"><input id="recently-collected" type="checkbox">Plus récemment récupérées d’abord</label><span>Selon leur première détection connue sur MarketDesk</span></div>
   <div class="results-header"><h2 id="count">Chargement des offres…</h2><div class="freshness"><span id="updated"></span><span id="sources"></span></div></div>
   <p id="message" role="status" aria-live="polite"></p>
   <div class="refresh-progress"><span id="refresh-status" role="status" aria-live="polite"></span><a id="refresh-run" hidden target="_blank" rel="noopener noreferrer">Ouvrir GitHub ↗</a></div>

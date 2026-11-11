@@ -1,6 +1,6 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
-const controls = ["search", "category", "family", "period", "start", "sort"];
+const controls = ["search", "category", "family", "period", "start", "sort", "recently-collected"];
 const normalize = (s) => String(s || "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 let offers = [], page = 1;
 let generated = "", manualWatch = null;
@@ -22,7 +22,10 @@ function render() {
     && (!$("start").value || j.start_month && j.start_month >= $("start").value)
     && (!$("period").value || $("period").value === "daily" && j.published === today
       || $("period").value === "weekly" && j.published >= first && j.published <= today));
-  if ($("sort").value === "recent") selected.sort((a,b) => b.published.localeCompare(a.published));
+  const byCollection = $("recently-collected").checked;
+  $("sort").disabled = byCollection;
+  if (byCollection) selected.sort((a,b) => (b.discovered_at || "").localeCompare(a.discovered_at || ""));
+  else if ($("sort").value === "recent") selected.sort((a,b) => b.published.localeCompare(a.published));
   const pages = Math.max(1, Math.ceil(selected.length / size)); page = Math.min(page, pages);
   const fragment = document.createDocumentFragment();
   for (const j of selected.slice((page-1)*size, page*size)) {
@@ -30,6 +33,11 @@ function render() {
     const card = $("offer-template").content.firstElementChild.cloneNode(true); card.href = href;
     for (const [selector, value] of [[".company",j.company],["h3",j.title],[".kind",j.kind],[".location",j.location],[".start",j.start],[".family",j.family],[".date",j.date_label]]) {
       const node = card.querySelector(selector); node.textContent = value; node.title = value;
+    }
+    if (byCollection && j.discovered_at) {
+      const date = card.querySelector(".date");
+      date.textContent = "Récupérée le " + new Intl.DateTimeFormat("fr-FR", {dateStyle:"short",timeStyle:"short",timeZone:"Europe/Paris"}).format(new Date(j.discovered_at));
+      date.title = "Première détection connue · " + j.date_label;
     }
     const img = card.querySelector("img"), initials = card.querySelector(".initials");
     initials.textContent = j.company.split(/\s+/).slice(0,2).map(s=>s[0] || "").join("").toUpperCase();

@@ -2,6 +2,7 @@
 import os
 import re
 import ipaddress
+from datetime import datetime
 from urllib.parse import parse_qsl, urlsplit
 
 PUBLIC_FIELDS = {"title", "company", "location", "kind", "url", "published", "date_label",
@@ -54,11 +55,15 @@ def validate_snapshot(data: dict) -> None:
     if any(type(value) is not int or value < 0 for value in data["sources"].values()):
         raise ValueError("Publication refused: invalid diagnostic count")
     for record in data["offers"]:
-        if set(record) != PUBLIC_FIELDS:
+        if set(record) not in (PUBLIC_FIELDS, PUBLIC_FIELDS | {"discovered_at"}):
             raise ValueError("Publication refused: unexpected offer fields")
-        for name in PUBLIC_FIELDS - {"categories"}:
+        for name in set(record) - {"categories"}:
             if not isinstance(record[name], str) or len(record[name]) > 2000:
                 raise ValueError("Publication refused: invalid public field")
         public_job_url(record["url"])
+        if "discovered_at" in record:
+            observed = datetime.fromisoformat(record["discovered_at"])
+            if observed.tzinfo is None:
+                raise ValueError("Publication refused: discovery timestamp needs a timezone")
         if not isinstance(record["categories"], list) or any(value not in {"Stages Paris", "Stages International", "VIE", "Graduate"} for value in record["categories"]):
             raise ValueError("Publication refused: invalid category")
