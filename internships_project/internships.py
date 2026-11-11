@@ -2546,7 +2546,7 @@ def _jobteaser_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
         payload = json.loads(JOBTEASER_CACHE_PATH.read_text(encoding="utf-8"))
         if payload.get("version") == 2:
             cached = [Opportunity(**row) for row in payload.get("jobs", [])]
-            if not _force_source_refresh and (now - datetime.fromisoformat(payload["updated"])).total_seconds() < JOBTEASER_CACHE_SECONDS:
+            if not _force_source_refresh and (now - datetime.fromisoformat(payload["updated"])).total_seconds() < _source_refresh_seconds("JobTeaser · sitemap", None):
                 return [replace(job, family=_family(job.title)) for job in cached]
     except (OSError, ValueError, TypeError, KeyError):
         pass
@@ -3075,6 +3075,9 @@ def _write_source_job_cache() -> None:
 
 def _source_refresh_seconds(name: str, loader: object) -> int:
     """Give dynamic feeds hourly checks and expensive or low-change pages longer intervals."""
+    configured = os.environ.get("INTERNSHIPS_SOURCE_CACHE_SECONDS")
+    if configured:
+        return max(300, int(configured))
     if name == "JobTeaser · sitemap":
         return JOBTEASER_CACHE_SECONDS
     if name in {"BNP Paribas", "BNP Paribas VIE", "BNP Paribas Asset Management", "ODDO BHF", "Tikehau Capital"}:

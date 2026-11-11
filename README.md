@@ -6,9 +6,13 @@ pertinents en marchés et gestion d'actifs. Les intitulés génériques nécessi
 description confirmant le desk ; les exigences explicites de trois ans d'expérience
 minimum et les métiers Middle Office, KYC et finance corporate restent exclus.
 GitHub Pages sert uniquement les fichiers HTML/CSS/JS, logos PNG et offres publiques.
-La collecte Python s'exécute toutes les deux heures de 6 h 07 à 2 h 07 le lendemain,
-en Europe/Paris (6, 8, 10, 12, 14, 16, 18, 20, 22, 0 et 2 h 07).
-Elle couvre les journées parisienne et américaine, indépendamment du PC.
+La collecte Python est programmée chaque heure à h 07, de 8 h à Paris jusqu'à
+22 h à New York inclus, tous les jours et indépendamment du PC. La dernière
+collecte tombe généralement à 4 h 07 le lendemain à Paris, ou à 3 h 07 pendant
+les semaines de décalage des changements d'heure entre les deux pays.
+Un contrôle des deux fuseaux bloque les collectes hors plage. Les caches des
+sources expirent après 55 minutes pour permettre une nouvelle vérification à
+chaque cycle ; les délais de reprise des sources en erreur restent respectés.
 Les horaires peuvent subir des retards.
 
 ## Sécurité

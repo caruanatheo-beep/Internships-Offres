@@ -10,8 +10,8 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '7 0,2,6-22/2 * * *'
-      timezone: Europe/Paris
+    - cron: '7 0-3,6-23 * * *'
+      timezone: Etc/UTC
 
 permissions:
   contents: read
@@ -21,12 +21,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      active: ${{ steps.window.outputs.active }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Respect Paris opening and New York closing hours
+        id: window
+        run: python3 scripts/internships_refresh_window.py
+
   build:
+    needs: window
+    if: needs.window.outputs.active == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       INTERNSHIPS_DATA_DIR: ${{ github.workspace }}/.collection-cache
       PYTHONUNBUFFERED: '1'
+      INTERNSHIPS_SOURCE_CACHE_SECONDS: '3300'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,7 +52,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r deploy/github-pages/requirements.txt pytest
       - name: Check public export boundaries
-        run: python -m pytest -q tests/test_pages_export.py tests/test_pages_email.py tests/test_internships_publication_sort.py tests/test_internships_source_browser_repair.py tests/test_internships_graduate_coverage.py
+        run: python -m pytest -q tests/test_pages_export.py tests/test_pages_email.py tests/test_internships_publication_sort.py tests/test_internships_source_browser_repair.py tests/test_internships_graduate_coverage.py tests/test_internships_refresh_window.py
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .collection-cache
