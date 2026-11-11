@@ -36,11 +36,11 @@ SMARTRECRUITERS = {
 GREENHOUSE = {
     "point72": "Point72",
     "janestreet": "Jane Street",
-    "optiver": "Optiver",
     "imc": "IMC Trading",
     "flowtraders": "Flow Traders",
     "quberesearchandtechnologies": "Qube Research & Technologies",
     "21shares": "21shares",
+    "davinciderivatives": "Da Vinci",
 }
 LEVER = {
     "wisdomtree-2": "WisdomTree",
@@ -192,7 +192,8 @@ _NON_MARKET_ROLE = re.compile(
     r"(?:collateral|processing|operations|forex) officer|post.trade|post.marche|"
     r"reconciliation|rapprochement|issuers? servicing|securities (?:lending|financing) officer|"
     r"fund (?:controller|execution officer)|gestionnaire.{0,30}fixed income|"
-    r"juriste|legal counsel|audit|controle de gestion|actifs (?:non cotes|prives)|dette privee|"
+    r"juriste|legal counsel|audit|controls? governance|expressions? of interest|talent pool|"
+    r"controle de gestion|actifs (?:non cotes|prives)|dette privee|"
     r"immobilier\w*|real estate|property management)\b", re.IGNORECASE,
 )
 _CORPORATE_ROLE = re.compile(
@@ -231,9 +232,12 @@ SOURCE_CONNECTOR_VERSIONS = {
     "Amundi": 3, "Crédit Agricole CIB": 2, "Crédit Mutuel Arkéa": 2, "Covéa Finance": 2,
     "DNCA": 2, "BNP Paribas Asset Management": 5, "BNP Paribas VIE": 5,
     "ODDO BHF": 2, "La Banque Postale": 2,
-    **{name: 2 for name in WORKDAY},
-    "BBVA": 3,
-    "ING": 3,
+    **{name: 3 for name in WORKDAY},
+    **{name: 2 for name in GREENHOUSE.values()},
+    **{name: 2 for name in ORACLE_CAREER_BOARDS},
+    "BBVA": 4,
+    "ING": 4,
+    "Optiver": 2,
 }
 JOBTEASER_INDEX = "https://assets-cf.jobteaser.com/sitemaps/sitemap.xml"
 JOBTEASER_EMPLOYERS = {
@@ -828,11 +832,20 @@ def _family(title: str) -> str:
 
 def _kind(title: str, employment: str = "") -> str | None:
     text = f"{title} {employment}".casefold()
-    if re.search(r"\b(?:cdi|cdd|permanent(?: contract)?|apprenticeship|alternance)\b", employment, re.I):
+    if re.search(r"\b(?:apprenticeship|alternance)\b", text):
+        return None
+    summer = bool(re.search(r"\bsummer (?:analyst|associate)\b", title, re.I))
+    graduate = bool(re.search(
+        r"\b(?:graduates?|new grads?|new analyst|analyst program(?:me)?|"
+        r"international talent program(?:me)?|traineeprogramm)\b", text, re.I)
+        or re.search(r"\bfull[ -]?time (?:analyst|associate)\b.{0,90}\b20\d{2}\b", title, re.I))
+    if re.search(r"\b(?:cdi|cdd|permanent(?: contract)?)\b", employment, re.I) and (not graduate or summer):
         return None
     if re.search(r"\bv\.?i\.?e\b", text):
         return "VIE"
-    if re.search(r"\b(?:graduate|new grad|new analyst|analyst program(?:me)?)\b", text):
+    if summer:
+        return "Stage"
+    if graduate:
         return "Graduate"
     if re.search(r"\b(?:intern(?:ship)?s?|stages?|stagiaires?|trainee|seasonal employee|"
                  r"off[ -]cycle|summer analyst|summer associate)\b", text):
@@ -863,7 +876,7 @@ def _opportunity(title: str, company: str, location: str, employment: str,
 def is_trusted_offer_url(url: str) -> bool:
     """Accept HTTPS job URLs only from career and provider hosts used by connectors."""
     allowed_hosts = {
-        "jobs.smartrecruiters.com", "boards.greenhouse.io", "job-boards.greenhouse.io",
+        "jobs.smartrecruiters.com", "boards.greenhouse.io", "job-boards.greenhouse.io", "job-boards.eu.greenhouse.io",
         "jobs.lever.co", "jobs.eu.lever.co", "jobs.ashbyhq.com",
         "careers.societegenerale.com", "mon-vie-via.businessfrance.fr",
         "group.bnpparibas", "careers.cib.bnpparibas", "bnppapply.tal.net", "jobs.ca-cib.com", "recrutement.creditmutuel.fr",
@@ -878,7 +891,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "ofiinvestassetmanagement.flatchr.io", "recrutement.altays-progiciels.com",
         "www.groupama-gan-recrute.com", "bdf.wd103.myworkdayjobs.com",
         "recrutement.axa.fr",
-        "www.dnca-investments.com", "jobs.ubs.com",
+        "www.dnca-investments.com", "jobs.ubs.com", "www.optiver.com",
         *(board[0] for board in WORKDAY.values()),
     }
     try:
@@ -952,6 +965,74 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
             job = replace(job, description=_plain_text(str(item.get("content") or ""))[:12_000])
             jobs.append(replace(job, source=f"Site carrière · Greenhouse · {company}"))
     return jobs
+
+
+def _optiver_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
+    """Read Optiver's replacement public catalogue, including all result pages."""
+    candidates: dict[str, Opportunity] = {}
+    seen: set[str] = set()
+    search_failures = 0
+    for offset in range(0, 1024, 16):
+        try:
+            for attempt in range(2):
+                try:
+                    response = requests.get("https://www.optiver.com/en/api/v1/jobs",
+                                            params={"from": offset, "size": 16}, timeout=(8, 25))
+                    break
+                except (requests.Timeout, requests.ConnectionError):
+                    if attempt:
+                        raise
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+                raise ValueError("Catalogue public Optiver invalide")
+            rows = payload["items"]
+            total = int(payload["totalCount"])
+            before = len(seen)
+            for item in rows:
+                url = urljoin("https://www.optiver.com", str(item.get("href") or ""))
+                parsed = urlparse(url)
+                if parsed.scheme != "https" or parsed.hostname != "www.optiver.com" or not parsed.path.startswith("/join-us/jobs/"):
+                    continue
+                seen.add(url)
+                if item.get("experience") not in {"Graduate", "Internship"}:
+                    continue
+                job = _opportunity(str(item.get("title") or ""), "Optiver", str(item.get("location") or ""),
+                                   item["experience"], url, "")
+                if job:
+                    candidates[url] = replace(job, source="Site carrière · Optiver")
+            if len(seen) >= total:
+                break
+            if len(seen) == before:
+                raise ValueError("Pagination Optiver sans nouveaux résultats")
+        except (requests.RequestException, ValueError, KeyError, TypeError):
+            if not seen:
+                raise
+            search_failures += 1
+            break
+    else:
+        search_failures += 1
+
+    def enrich(job: Opportunity) -> Opportunity:
+        reused = _cached_detail(job)
+        if reused and reused.description:
+            return reused
+        try:
+            detail = requests.get(job.url, timeout=(8, 20))
+            detail.raise_for_status()
+            structured = _jsonld_jobposting(detail.text)
+            description = _plain_text(str(structured.get("description") or ""))
+            return replace(job, description=description[:12_000],
+                           start_period=_start_period(description) or _title_period(job.title),
+                           published=_jsonld_job_posted(detail.text))
+        except (requests.RequestException, ValueError, TypeError):
+            return job  # The current official catalogue already confirms this vacancy.
+
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="optiver-detail") as pool:
+        found = list(pool.map(enrich, candidates.values()))
+    if search_failures:
+        raise _PartialSourceError(found, [], search_failures=search_failures)
+    return found
 
 
 def _lever_jobs(slug: str, company: str) -> list[Opportunity]:
@@ -3164,6 +3245,7 @@ def _fetch_opportunities_progressive() -> tuple[list[Opportunity], list[str]]:
     for slug, company in ASHBY.items():
         tasks.append((company, _ashby_jobs, (slug, company)))
     tasks.extend([
+        ("Optiver", _optiver_jobs, ("", "")),
         ("UBS", _ubs_jobs, ("", "")),
         ("Soci\u00e9t\u00e9 G\u00e9n\u00e9rale Careers", _socgen_jobs, ("", "")),
         ("Business France VIE", _vie_jobs, ("", "")),
