@@ -91,3 +91,9 @@ La barre de tri sous les filtres propose Pertinence et Publication récente.
 Les deux choix sont exclusifs et accessibles au clavier. Les fichiers CSS et JS
 portent une version calculée sur leur contenu pour éviter les mélanges de versions
 dans le cache du navigateur.
+
+La pertinence combine le score poste/localisation normalisé sur 50 points, la
+fenêtre avril–septembre 2027 sur 35 points et la proximité d'avril 2027 sur 15
+points (2,5 points de moins par mois d'écart). La publication la plus récente
+départage uniquement les scores égaux. Un score source inhabituellement élevé
+est plafonné pour qu'il ne puisse pas écraser les deux critères de disponibilité.

@@ -599,10 +599,22 @@ def _publication_sort_value(published: str) -> int:
         return 0
 
 
+def _opportunity_relevance(job: Opportunity) -> float:
+    """Combine role/location (50), target window (35), and start proximity (15)."""
+    role = 50 * max(0, min(job.score, 115)) / 115
+    window = 35 if _priority_start(job) else 0
+    month = start_month(job.start_period)
+    timing = 0
+    if month:
+        year, number = map(int, month.split("-"))
+        distance = abs((year - 2027) * 12 + number - 4)
+        timing = max(0, 15 - 2.5 * distance)
+    return round(role + window + timing, 6)
+
+
 def _opportunity_sort_key(job: Opportunity) -> tuple:
     published = _publication_sort_value(job.published)
-    return (-int(_priority_start(job)), start_month(job.start_period) or "9999-99",
-            -job.score, -published, job.company.casefold(),
+    return (-_opportunity_relevance(job), -published, job.company.casefold(),
             job.title.casefold(), job.url.casefold())
 
 
