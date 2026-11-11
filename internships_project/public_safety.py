@@ -19,7 +19,7 @@ def assert_public(payload: bytes, label: str) -> None:
     if SECRET.search(payload):
         raise ValueError(f"Publication refused: possible credential in {label}")
     for name, value in os.environ.items():
-        if len(value) >= 8 and any(word in name.upper() for word in ("API_KEY", "API_TOKEN", "SECRET_KEY")):
+        if len(value) >= 8 and any(word in name.upper() for word in ("API_KEY", "API_TOKEN", "SECRET_KEY", "PASSWORD", "SMTP_USERNAME", "EMAIL_TO", "EMAIL_FROM")):
             if value.encode() in payload:
                 raise ValueError(f"Publication refused: environment credential in {label}")
 

@@ -11,8 +11,11 @@ Les horaires peuvent subir des retards.
 
 - Aucun compte, CV, contact, suivi de candidature, outil IA ou clé IA dans ce dépôt.
 - Aucun fichier `.env`, historique Git du projet principal ou base utilisateur transféré.
-- Aucun secret à ajouter dans GitHub Actions : le jeton temporaire GitHub de
-  publication est géré par la plateforme, dans un job distinct de la collecte.
+- Aucune clé IA. Les seuls paramètres privés nécessaires sont les paramètres SMTP
+  et les adresses, chiffrés dans l'environnement GitHub `email-alerts`, limité à
+  la branche `main`. Ils ne sont fournis qu'à l'étape d'envoi, après publication.
+- Le collecteur, le site public et les artefacts de publication ne reçoivent pas
+  ces secrets. Les jetons temporaires GitHub sont gérés par la plateforme.
 - Actions officielles épinglées par SHA ; aucun workflow de pull request privilégié.
 - Le job de collecte n'a pas de droit d'écriture sur le dépôt et ne conserve pas
   les identifiants Git dans sa copie de travail.
@@ -39,6 +42,35 @@ conservent leurs délais de cache pour éviter de surcharger les sites carrière
 Certaines sources peuvent refuser les IP des centres de données : l'état affiché
 signale les indisponibilités et le cache conserve les offres précédentes.
 Une collecte sans aucune offre bloque la publication et conserve l'ancien site.
+
+## Alertes email
+
+Après chaque publication réussie (planifiée ou manuelle), une étape séparée compare
+les offres à l'historique des alertes. Elle envoie un seul récapitulatif s'il y a
+de nouvelles offres employeurs et aucun mail sinon. Les liens issus uniquement
+du sitemap JobTeaser, dont l'ouverture n'est pas confirmée, ne déclenchent pas
+d'alerte. Le même poste retrouvé chez une autre source n'est pas renvoyé.
+
+L'historique durable est conservé sur la branche `notification-state`. Il contient
+uniquement des empreintes SHA-256 d'offres publiques et une date, jamais d'adresse,
+de mot de passe ou de profil. Cette branche ne déclenche pas de collecte. En cas
+de réinitialisation de cet historique, la première exécution établit une référence
+silencieuse pour éviter l'envoi massif d'anciennes offres.
+
+L'envoi utilise SMTP avec TLS vérifié. Une erreur de mail reste visible dans le
+job `notify`, mais ne retire pas le site publié. Les offres ne sont enregistrées
+comme notifiées qu'après acceptation du message par le serveur SMTP ; un refus
+d'envoi peut donc être retenté à la mise à jour suivante. Une interruption entre
+l'acceptation SMTP et l'enregistrement peut exceptionnellement causer un doublon.
+
+Le lancement manuel peut cocher « Envoyer un mail de test » pour vérifier la
+configuration sans marquer d'offre comme notifiée.
+
+L'envoi reste désactivé tant que la variable GitHub `EMAIL_ALERTS_ENABLED` n'est
+pas définie à `true`. Ne l'activer qu'après avoir configuré les sept secrets SMTP
+dans l'environnement `email-alerts`, limité à `main`, et initialisé la branche
+`notification-state`. Les valeurs doivent être chiffrées avec la clé publique
+GitHub avant leur transfert. Ne jamais les placer dans le code ou les artefacts.
 
 GitHub peut désactiver les horaires après 60 jours sans activité sur un dépôt
 public. Vérifier périodiquement l'onglet Actions et réactiver le workflow au besoin.
