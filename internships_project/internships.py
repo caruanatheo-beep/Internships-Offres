@@ -369,6 +369,12 @@ def _normalized_offer_text(value: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", normalized)).strip()
 
 
+def _canonical_location(location: str) -> str:
+    aliases = {"singapour": "singapore", "londres": "london",
+               "francfort": "frankfurt", "geneve": "geneva"}
+    return " ".join(aliases.get(word, word) for word in _normalized_offer_text(location).split())
+
+
 def _cached_detail(job: Opportunity) -> Opportunity | None:
     """Reuse a previously read description when its public offer metadata is unchanged."""
     previous = _refresh_previous_jobs.get(job.url)
@@ -3252,7 +3258,7 @@ def _deduplicate_opportunities(jobs: list[Opportunity]) -> list[Opportunity]:
     jobs = [job for job in jobs if _eligible_offer(job)]
     grouped: dict[tuple[str, str, str, str], list[Opportunity]] = {}
     for job in _without_jobteaser_duplicates(jobs):
-        location_key = "paris-area" if _is_paris(job.location) else _normalized_offer_text(job.location)
+        location_key = "paris-area" if _is_paris(job.location) else _canonical_location(job.location)
         # Identical role names can advertise separate internship, VIE or work-study contracts.
         key = (_canonical_title(job.title), _canonical_company(job.company), location_key, job.kind)
         grouped.setdefault(key, []).append(job)
