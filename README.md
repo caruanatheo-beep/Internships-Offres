@@ -1,6 +1,9 @@
 # MarketDesk — offres publiques
 
 Site statique consacré aux stages, VIE et programmes graduate en finance de marché.
+Candriam est collecté directement depuis son RSS public et BNY depuis son portail
+Oracle. Les postes de relation clients en gestion d'actifs sont classés Sales
+uniquement lorsqu'une mission au sein de l'équipe commerciale est documentée.
 Le filtre « Graduate / Junior » inclut les intitulés Junior Analyst / Analyste junior
 pertinents en marchés et gestion d'actifs. Les intitulés génériques nécessitent une
 description confirmant le desk ; les exigences explicites de trois ans d'expérience

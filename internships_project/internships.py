@@ -107,6 +107,8 @@ CAREER_PORTALS = {
     "Tikehau Capital": "https://tikehau-capital-career.talentview.io/jobs",
     "CFM": "https://jobs.cfm.com/go/Internship/9276655/",
     "DNCA": "https://www.dnca-investments.com/carrieres",
+    "Candriam": "https://jobs.candriam.com/Pages/Offre/ListeOffre.aspx?LCID=2057",
+    "BNY": "https://eofe.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/BNY-Careers/jobs",
 }
 CAREER_LISTINGS = {
     "La Française": ("https://recrutement.creditmutuel.fr/fr/nos_offres.html?socs=39|4962|1499|1497|4963|4965|5007|5008|1496&tc=3",
@@ -131,6 +133,7 @@ CAREER_LISTINGS = {
 }
 ODDO_ALTAYS_LISTING = "https://recrutement.altays-progiciels.com/oddo/en/recherche.html"
 ORACLE_CAREER_BOARDS = {
+    "BNY": ("https://eofe.fa.us2.oraclecloud.com", "BNY-Careers", "BNY"),
     "Lazard Student Careers": (
         "https://icbpjb.fa.ocs.oraclecloud.com",
         "LazardStudentCareers",
@@ -329,6 +332,8 @@ COMPANY_ICON_HOSTS = {
     "gieaxa": "www.axa.com",
     "goldmansachs": "www.goldmansachs.com",
     "hsbccontinentaleurope": "www.hsbc.com",
+    "candriam": "jobs.candriam.com",
+    "bny": "www.bny.com",
     "jpmorgan": "www.jpmorgan.com",
     "labanquepostale": "www.labanquepostale.com",
     "ocbcglobalmarkets": "www.ocbc.com",
@@ -792,6 +797,12 @@ def _experienced_junior(context: str) -> bool:
         + r"|\b(?:experience|expérience)\s+(?:de|of)\s+" + years + r"\s+(?:minimum|required|obligatoire)\b", context, re.I))
 
 
+def _asset_management_sales_support(title: str, context: str) -> bool:
+    return bool(re.search(r"\b(?:client relationship|relationship (?:support|management)|client coverage)\b", title, re.I)
+        and re.search(r"\b(?:asset management|investment management)\b", context, re.I)
+        and re.search(r"\b(?:join|support)\w*\b.{0,100}\b(?:sales|distribution) (?:desk|team)\b", context, re.I))
+
+
 def _market_relevant_with_context(title: str, context: str = "") -> bool:
     """Allow investment-team roles only when an official description confirms context."""
     normalized = unicodedata.normalize("NFKD", context.casefold())
@@ -808,11 +819,13 @@ def _market_relevant_with_context(title: str, context: str = "") -> bool:
         r"(?:au sein (?:du|de la|de l['’])|rattache\w* (?:au|a la|a l['’])|"
         r"(?:integrer\w*|rejoind\w*) (?:notre|le|la|l['’])|(?:you will join|joining) (?:our|the))\s*"
         r"(?:(?:departement|direction|service|equipe|team|division)\s+(?:(?:de|du|des)\s+)?)?"
-        r"(?:real estate fund management|middle[ -]?office|back[ -]?office|corporate finance)",
+        r"(?:real estate fund management|middle[ -]?office|back[ -]?office|corporate finance|operations|fund accounting|custody|settlements)",
         normalized,
     ):
         return False
     if _market_relevant(title):
+        return True
+    if _asset_management_sales_support(title, context):
         return True
     if not re.search(r"\b(?:analyst\w*|gerant\w*|risk manag(?:er|ement)|investment|portfolio|tresor\w*)\b", normalized_title):
         return False
@@ -842,7 +855,9 @@ def _excluded_employer(company: str) -> bool:
     return bool(re.search(r"\bpalatine\b", normalized))
 
 
-def _family(title: str) -> str:
+def _family(title: str, context: str = "") -> str:
+    if _asset_management_sales_support(title, context):
+        return "Sales"
     title = unicodedata.normalize("NFKD", title.casefold())
     title = "".join(char for char in title if not unicodedata.combining(char))
     if re.search(
@@ -855,7 +870,7 @@ def _family(title: str) -> str:
         return "Capital Markets"
     if re.search(r"\bsales\b|\bsale\b|\bvente\w*\b|commercial client", title):
         return "Sales"
-    if re.search(r"\btrading\b|\btrader\b|\bstructur\w*\b|\bpricing\b|\bderivat\w*\b|\bfx\b|\brates\b", title):
+    if re.search(r"\btrading\b|\btrader\b|\btrade execution\b|\bstructur\w*\b|\bpricing\b|\bderivat\w*\b|\bfx\b|\brates\b", title):
         return "Trading / Structuring"
     if re.search(
         r"asset management|portfolio|fund management|investment management|"
@@ -913,7 +928,7 @@ def _opportunity(title: str, company: str, location: str, employment: str,
     ))
     score = (100 if paris and kind == "Stage" else 70 if paris else 45) + (15 if market_focus else 0)
     return Opportunity(title, company, location, kind, url, published[:10], score, start_period,
-                       _family(title), "", datetime.now(timezone.utc).date().isoformat(), employment=employment)
+                       _family(title, role_context), "", datetime.now(timezone.utc).date().isoformat(), employment=employment)
 
 
 def is_trusted_offer_url(url: str) -> bool:
@@ -935,6 +950,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "www.groupama-gan-recrute.com", "bdf.wd103.myworkdayjobs.com",
         "recrutement.axa.fr",
         "www.dnca-investments.com", "jobs.ubs.com", "www.optiver.com",
+        "jobs.candriam.com", "eofe.fa.us2.oraclecloud.com",
         *(board[0] for board in WORKDAY.values()),
     }
     try:
@@ -1438,12 +1454,19 @@ def _career_detail(url: str, company: str, fallback_title: str = "",
             return None
         company = "Amundi"
     structured_title = str(structured.get("title") or "").strip()
+    if portal_company == "Candriam":
+        fallback_title = re.sub(r"^\d{4}-\d+\s*[-–]\s*", "", fallback_title)
     title = next((heading for heading in page.headings if _market_relevant(heading)), "") or structured_title or fallback_title
+    if portal_company == "Candriam":
+        title = next((heading for heading in page.headings if _canonical_title(heading) == _canonical_title(fallback_title)), fallback_title)
     if not _market_relevant_with_context(title, f'{text} {_plain_text(str(structured.get("description") or ""))}'):
         return None
     location = ""
     published = _jsonld_job_posted(page_html)
     employment = str(structured.get("employmentType") or "")
+    if portal_company == "Candriam":
+        contract = re.search(r"\b(?:Contract type|Type de contrat)\s*[:|]*\s*(Internship|Stage|VIE|Graduate|Permanent|Temporary|Alternance)\b", offer_text, re.I)
+        employment = contract[1] if contract else employment
     location = _structured_job_location(structured)
     if company == "Marex":
         location = _header_job_location(page.parts, title) or location
@@ -2431,6 +2454,10 @@ def _ca_cib_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
     return _career_rss_jobs("Crédit Agricole CIB", "jobs.ca-cib.com", (579, 1478))
 
 
+def _candriam_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
+    return _career_rss_jobs("Candriam", "jobs.candriam.com", (2644,))
+
+
 def _amundi_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
     return _career_rss_jobs("Amundi", "jobs.amundi.com", (579, 1478))
 
@@ -2910,7 +2937,7 @@ def _oracle_jobs(board_name: str, board: tuple[str, str, str]) -> list[Opportuni
                 direct_url = urljoin(f"{root}/hcmUI/CandidateExperience/en/sites/{site}/", direct_url)
             if not direct_url:
                 direct_url = f"{root}/hcmUI/CandidateExperience/en/sites/{site}/job/{job_id}/"
-            short_description = str(row.get("ExternalDescription") or row.get("ShortDescription") or "")
+            short_description = str(row.get("ExternalDescription") or row.get("ShortDescription") or row.get("ShortDescriptionStr") or "")
             description_text = _plain_text(short_description)
             description_fold = unicodedata.normalize("NFKD", description_text).encode("ascii", "ignore").decode().casefold()
             employer_context = description_fold[:1_200]
@@ -2935,7 +2962,7 @@ def _oracle_jobs(board_name: str, board: tuple[str, str, str]) -> list[Opportuni
         reused = _cached_detail(job)
         if reused and reused.description:
             return reused
-        detail_url = f"{root}/hcmRestApi/resources/11.13.18.05/recruitingCEJobRequisitionDetails/{job_id}"
+        detail_url = f"{root}/hcmRestApi/resources/11.13.18.05/recruitingCEJobRequisitionDetails"
         try:
             response = session.get(detail_url, params={"onlyData": "true", "expand": "all",
                                                        "finder": f"ById;Id={job_id},siteNumber={site_number}"},
@@ -2949,7 +2976,7 @@ def _oracle_jobs(board_name: str, board: tuple[str, str, str]) -> list[Opportuni
                     nodes.extend(node)
                 elif isinstance(node, dict):
                     nodes.extend(value for value in node.values() if isinstance(value, (dict, list)))
-                    for key in ("ExternalDescription", "JobDescription", "Description", "ShortDescription"):
+                    for key in ("ExternalDescription", "JobDescription", "Description", "ShortDescription", "ExternalDescriptionStr"):
                         value = node.get(key)
                         if isinstance(value, str) and len(_plain_text(value)) > len(existing_description):
                             existing_description = _plain_text(value)
@@ -3367,6 +3394,7 @@ def _fetch_opportunities_progressive() -> tuple[list[Opportunity], list[str]]:
         ("Cov\u00e9a Finance", _covea_finance_jobs, ("", "")),
         ("Comgest", _comgest_jobs, ("", "")),
         ("DNCA", _dnca_jobs, ("", "")),
+        ("Candriam", _candriam_jobs, ("", "")),
         ("BPCE Open Data", _bpce_open_data_jobs, ("", "")),
         ("JobTeaser \u00b7 sitemap", _jobteaser_jobs, ("", "")),
         ("ODDO BHF", lambda *_: _oddo_jobs(), ()),
@@ -3444,7 +3472,7 @@ def _read_cache() -> tuple[datetime, list[Opportunity], list[str]] | None:
                 and urlparse(str(item.get("url") or "")).hostname not in {"adzuna.fr", "www.adzuna.fr"}
                 and (not item.get("deadline") or date.fromisoformat(item["deadline"]) >= today)]
         jobs = [replace(job, location=_clean_job_location(job.location, job.title)) for job in jobs]
-        jobs = [replace(job, family=_family(job.title),
+        jobs = [replace(job, family=_family(job.title, job.description),
                         start_period=_recovered_start_period(job))
                 for job in jobs if _eligible_offer(job)]
         # Older snapshots had undated offers. Their snapshot date is the
