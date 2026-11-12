@@ -10,7 +10,9 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '7 0-3,6-23 * * *'
+    # Retry slots compensate for missed/delayed schedule delivery. The window
+    # job skips collection when the published snapshot is under 55 minutes old.
+    - cron: '7,27,47 0-3,6-23 * * *'
       timezone: Etc/UTC
 
 permissions:
@@ -32,6 +34,8 @@ jobs:
           persist-credentials: false
       - name: Respect Paris opening and New York closing hours
         id: window
+        env:
+          PUBLIC_OFFERS_URL: https://caruanatheo-beep.github.io/Internships-Offres/offers.json
         run: python3 scripts/internships_refresh_window.py
 
   build:

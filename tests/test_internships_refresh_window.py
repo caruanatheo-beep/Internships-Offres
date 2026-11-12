@@ -6,7 +6,7 @@ import runpy
 
 import pytest
 
-from scripts.internships_refresh_window import collection_window_open
+from scripts.internships_refresh_window import collection_window_open, snapshot_recent
 from internships_project import internships as jobs
 
 
@@ -65,8 +65,44 @@ def test_workflow_gates_build_and_configures_hourly_checks():
     if not path.is_file():
         path = root / 'deploy/github-pages/pages.yml'
     workflow = path.read_text(encoding='utf-8')
-    assert "cron: '7 0-3,6-23 * * *'" in workflow
+    assert "cron: '7,27,47 0-3,6-23 * * *'" in workflow
     assert 'timezone: Etc/UTC' in workflow
     assert 'needs: window' in workflow and "if: needs.window.outputs.active == 'true'" in workflow
     assert 'python3 scripts/internships_refresh_window.py' in workflow
     assert "INTERNSHIPS_SOURCE_CACHE_SECONDS: '3300'" in workflow
+    assert 'PUBLIC_OFFERS_URL: https://caruanatheo-beep.github.io/Internships-Offres/offers.json' in workflow
+
+
+@pytest.mark.parametrize('age_minutes,expected', [(0,True),(54,True),(55,False),(180,False),(-1,False)])
+def test_retry_skips_only_recent_successful_publications(age_minutes,expected):
+    now=datetime(2026,11,12,21,30,tzinfo=timezone.utc)
+    updated=(now-timedelta(minutes=age_minutes)).isoformat()
+    assert snapshot_recent(now,updated) is expected
+
+
+@pytest.mark.parametrize('updated',['','invalid','2026-11-12T21:30:00',None])
+def test_missing_invalid_or_naive_timestamp_does_not_block_recovery(updated):
+    assert not snapshot_recent(datetime(2026,11,12,21,30,tzinfo=timezone.utc),updated)
+
+
+def test_us_afternoon_is_inside_collection_window():
+    assert collection_window_open(datetime(2026,11,12,21,30,tzinfo=timezone.utc))
+
+
+@pytest.mark.parametrize('fresh,fetch_failed',[(True,False),(False,False),(False,True)])
+def test_scheduled_entrypoint_checks_public_snapshot_and_fails_open(tmp_path,monkeypatch,fresh,fetch_failed):
+    import io
+    from scripts import internships_refresh_window as window
+    now=datetime(2026,11,12,21,30,tzinfo=timezone.utc)
+    def open_snapshot(request,**kwargs):
+        assert kwargs['timeout']==12
+        if fetch_failed:raise OSError('unavailable')
+        updated=(now-timedelta(minutes=5 if fresh else 180)).isoformat()
+        return io.BytesIO(('{"updated":"'+updated+'"}').encode())
+    monkeypatch.setattr(window,'urlopen',open_snapshot)
+    output=tmp_path/'output'
+    monkeypatch.setenv('GITHUB_EVENT_NAME','schedule')
+    monkeypatch.setenv('GITHUB_OUTPUT',str(output))
+    monkeypatch.setenv('PUBLIC_OFFERS_URL','https://example.invalid/offers.json')
+    window.main(now)
+    assert output.read_text().strip()==f'active={str(not fresh).lower()}'
