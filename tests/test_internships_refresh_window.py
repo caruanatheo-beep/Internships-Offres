@@ -60,7 +60,11 @@ def test_hourly_public_cache_keeps_local_defaults(monkeypatch):
 
 
 def test_workflow_gates_build_and_configures_hourly_checks():
-    workflow = (Path(__file__).resolve().parents[1] / 'deploy/github-pages/pages.yml').read_text(encoding='utf-8')
+    root = Path(__file__).resolve().parents[1]
+    path = root / '.github/workflows/pages.yml'
+    if not path.is_file():
+        path = root / 'deploy/github-pages/pages.yml'
+    workflow = path.read_text(encoding='utf-8')
     assert "cron: '7 0-3,6-23 * * *'" in workflow
     assert 'timezone: Etc/UTC' in workflow
     assert 'needs: window' in workflow and "if: needs.window.outputs.active == 'true'" in workflow
