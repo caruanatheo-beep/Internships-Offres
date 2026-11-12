@@ -20,7 +20,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import parse_qsl, urljoin, urlparse
+from urllib.parse import parse_qsl, unquote, urljoin, urlparse
 from xml.etree import ElementTree
 
 import requests
@@ -108,6 +108,8 @@ CAREER_PORTALS = {
     "CFM": "https://jobs.cfm.com/go/Internship/9276655/",
     "DNCA": "https://www.dnca-investments.com/carrieres",
     "Candriam": "https://jobs.candriam.com/Pages/Offre/ListeOffre.aspx?LCID=2057",
+    "Commerzbank": "https://jobs.commerzbank.com/index.php?ac=search_result",
+    "Standard Chartered": "https://jobs.standardchartered.com/search/",
     "BNY": "https://eofe.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/BNY-Careers/jobs",
 }
 CAREER_LISTINGS = {
@@ -333,6 +335,8 @@ COMPANY_ICON_HOSTS = {
     "goldmansachs": "www.goldmansachs.com",
     "hsbccontinentaleurope": "www.hsbc.com",
     "candriam": "jobs.candriam.com",
+    "commerzbank": "jobs.commerzbank.com",
+    "standardchartered": "jobs.standardchartered.com",
     "bny": "www.bny.com",
     "jpmorgan": "www.jpmorgan.com",
     "labanquepostale": "www.labanquepostale.com",
@@ -860,6 +864,9 @@ def _family(title: str, context: str = "") -> str:
         return "Sales"
     title = unicodedata.normalize("NFKD", title.casefold())
     title = "".join(char for char in title if not unicodedata.combining(char))
+    if (re.search(r"\bsyndicat\w*.*portfolio management\b", title)
+            and re.search(r"bond syndication|(?:loans and|debt capital markets|distribution of).*bonds", context, re.I)):
+        return "Capital Markets"
     if re.search(
         r"\b(?:ecm|dcm)\b|equity capital markets|debt capital markets|"
         r"capital markets? origination|primary (?:bond|debt|equity|capital) markets?|"
@@ -871,6 +878,9 @@ def _family(title: str, context: str = "") -> str:
     if re.search(r"\bsales\b|\bsale\b|\bvente\w*\b|commercial client", title):
         return "Sales"
     if re.search(r"\btrading\b|\btrader\b|\btrade execution\b|\bstructur\w*\b|\bpricing\b|\bderivat\w*\b|\bfx\b|\brates\b", title):
+        return "Trading / Structuring"
+    if (re.search(r"\bmarkets (?:intern\w*|graduate\w*)\b", title)
+            and re.search(r"\btrading\b", context, re.I)):
         return "Trading / Structuring"
     if re.search(
         r"asset management|portfolio|fund management|investment management|"
@@ -951,6 +961,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "recrutement.axa.fr",
         "www.dnca-investments.com", "jobs.ubs.com", "www.optiver.com",
         "jobs.candriam.com", "eofe.fa.us2.oraclecloud.com",
+        "jobs.commerzbank.com", "jobs.standardchartered.com",
         *(board[0] for board in WORKDAY.values()),
     }
     try:
@@ -2458,6 +2469,144 @@ def _candriam_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
     return _career_rss_jobs("Candriam", "jobs.candriam.com", (2644,))
 
 
+def _commerzbank_employment(title: str) -> str:
+    # German trainee programmes are graduate jobs, not student internships.
+    if re.search(r"\btrainee\b|traineeprogramm", title, re.I):
+        return "Graduate"
+    return "Internship" if re.search(r"\bpraktik(?:ant\w*|um)\b", title, re.I) else ""
+
+
+def _bank_career_detail(url: str, company: str) -> Opportunity | None:
+    """Read the two banks' public metadata, keeping posting and start dates apart."""
+    response = requests.get(url, timeout=(8, 20))
+    response.raise_for_status()
+    page_html = response.content.decode("utf-8")
+    page = _CareerHTML()
+    page.feed(page_html)
+    def field(label: str) -> str:
+        for index, part in enumerate(page.parts[:-1]):
+            if part.strip(" :\xa0").casefold() == label.casefold():
+                for value in page.parts[index + 1:index + 3]:
+                    value = value.strip().lstrip(":").strip()
+                    if value.rstrip(":").casefold() != label.casefold():
+                        return value
+        return ""
+    def calendar_date(value: str) -> str:
+        try:
+            return datetime.strptime(value.replace(".", "/"), "%d/%m/%Y").date().isoformat()
+        except ValueError:
+            return ""
+    text = " ".join(page.parts)
+    if company == "Commerzbank":
+        structured = _jsonld_jobposting(page_html)
+        title = html.unescape(str(structured.get("title") or ""))
+        location = _structured_job_location(structured)
+        published = _jsonld_job_posted(page_html)
+        deadline = str(structured.get("validThrough") or "")[:10]
+        start = field("Datum des ersten Arbeitstages") or field("Starting date") or field("First day of work")
+        english_start = field("First working day")
+        if not start and english_start:
+            try:
+                start = datetime.strptime(re.sub(r"\s", "", english_start), "%m/%d/%Y").date().isoformat()
+            except ValueError:
+                start = ""
+        employment = _commerzbank_employment(title) or str(structured.get("employmentType") or "")
+        text = _plain_text(html.unescape(str(structured.get("description") or ""))) or text
+        # Retail/corporate-client sales are not institutional markets desks.
+        if re.search(r"privat.? und unternehmerkunden|sales management.*corporate clients|\boperations\b", title, re.I):
+            return None
+    else:
+        meta = re.search(r'<meta\s+property="og:title"\s+content="([^"]+)"', page_html, re.I)
+        title = html.unescape(meta[1]) if meta else ""
+        location = field("Job Location")
+        published = _career_publication_date(field("Posting Start Date"))
+        deadline = calendar_date(field("Posting End Date"))
+        start = field("Start Date")
+        employment = field("Employment Type")
+    if not title:
+        raise ValueError(f"fiche {company} sans métadonnées de poste")
+    if deadline and deadline < datetime.now(timezone.utc).date().isoformat():
+        return None
+    start = calendar_date(start) or _start_period(f"Start date: {start}")
+    job = _opportunity(title, company, location, employment, url, published,
+                       start, role_context=text)
+    return replace(job, deadline=deadline, description=text[:12_000],
+                   source=f"Site carrière · {urlparse(url).hostname}") if job else None
+
+
+def _commerzbank_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
+    found, failures = [], []
+    first = 1
+    while first <= 10_000:
+        try:
+            response = requests.post("https://api-jobs.commerzbank.com/search/", json={
+                "LanguageCode": "DE",
+                "SearchParameters": {"FirstItem": first, "CountItem": 100,
+                    "MatchedObjectDescriptor": ["ID", "PositionTitle"],
+                    "Sort": [{"Criterion": "PublicationStartDate", "Direction": "DESC"}]},
+                "SearchCriteria": [{"CriterionName": "PublicationChannel.Code", "CriterionValue": ["12"]}],
+            }, timeout=(8, 25))
+            response.raise_for_status()
+            result = response.json()["SearchResult"]
+            rows = result["SearchResultItems"]
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            if first > 1:
+                raise _PartialSourceError(found, failures, search_failures=1) from exc
+            raise
+        if not rows and first <= int(result["SearchResultCountAll"]):
+            raise _PartialSourceError(found, failures, search_failures=1)
+        for row in rows:
+            item = row["MatchedObjectDescriptor"]
+            title = item["PositionTitle"]
+            identity = str(item["ID"])
+            if not identity.isdigit() or not _market_candidate(title) or not _kind(title, _commerzbank_employment(title)):
+                continue
+            url = f"https://jobs.commerzbank.com/index.php?ac=jobad&id={identity}&language=2"
+            try:
+                job = _bank_career_detail(url, "Commerzbank")
+                if job:
+                    found.append(job)
+            except (requests.RequestException, ValueError):
+                failures.append(url)
+        first += len(rows)
+        if first > int(result["SearchResultCountAll"]):
+            break
+    else:
+        raise _PartialSourceError(found, failures, search_failures=1)
+    if failures:
+        raise _PartialSourceError(found, failures)
+    return found
+
+
+def _standard_chartered_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
+    response = requests.get("https://jobs.standardchartered.com/sitemap.xml", timeout=(8, 25))
+    response.raise_for_status()
+    root = ElementTree.fromstring(response.content)
+    if root.tag.rsplit("}", 1)[-1] != "urlset":
+        raise ValueError("sitemap Standard Chartered invalide")
+    found, failures, seen = [], [], set()
+    for element in root.iter():
+        if element.tag.rsplit("}", 1)[-1] != "loc":
+            continue
+        url = (element.text or "").strip()
+        parsed = urlparse(url)
+        title = unquote(parsed.path).replace("-", " ")
+        if (parsed.scheme != "https" or parsed.netloc != "jobs.standardchartered.com"
+                or not parsed.path.startswith("/job/") or url in seen
+                or not _kind(title) or not _market_candidate(title)):
+            continue
+        seen.add(url)
+        try:
+            job = _bank_career_detail(url, "Standard Chartered")
+            if job:
+                found.append(job)
+        except (requests.RequestException, ValueError):
+            failures.append(url)
+    if failures:
+        raise _PartialSourceError(found, failures)
+    return found
+
+
 def _amundi_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
     return _career_rss_jobs("Amundi", "jobs.amundi.com", (579, 1478))
 
@@ -3395,6 +3544,8 @@ def _fetch_opportunities_progressive() -> tuple[list[Opportunity], list[str]]:
         ("Comgest", _comgest_jobs, ("", "")),
         ("DNCA", _dnca_jobs, ("", "")),
         ("Candriam", _candriam_jobs, ("", "")),
+        ("Commerzbank", _commerzbank_jobs, ("", "")),
+        ("Standard Chartered", _standard_chartered_jobs, ("", "")),
         ("BPCE Open Data", _bpce_open_data_jobs, ("", "")),
         ("JobTeaser \u00b7 sitemap", _jobteaser_jobs, ("", "")),
         ("ODDO BHF", lambda *_: _oddo_jobs(), ()),

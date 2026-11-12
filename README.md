@@ -1,6 +1,9 @@
 # MarketDesk — offres publiques
 
 Site statique consacré aux stages, VIE et programmes graduate en finance de marché.
+Commerzbank est collecté via son catalogue public paginé, Standard Chartered via
+son sitemap et ses fiches publiques. Les dates de début et de publication restent
+distinctes ; les annonces expirées sont écartées avant publication.
 Candriam est collecté directement depuis son RSS public et BNY depuis son portail
 Oracle. Les postes de relation clients en gestion d'actifs sont classés Sales
 uniquement lorsqu'une mission au sein de l'équipe commerciale est documentée.
