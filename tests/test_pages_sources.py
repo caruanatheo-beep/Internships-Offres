@@ -131,3 +131,36 @@ def test_unconfigured_receiver_disables_submission(sources_screen):
     assert page.locator('#source-name').is_disabled()
     assert page.locator('#source-submit').is_disabled()
     assert not calls
+
+
+def test_announcement_dismissal_persists_and_link_opens_sources(sources_screen):
+    page, calls, _ = sources_screen
+    page.locator('#nav-offers').click()
+    expect(page.locator('#sources-announcement')).to_be_visible()
+    page.locator('#announcement-close').click()
+    expect(page.locator('#sources-announcement')).to_be_hidden()
+    expect(page.locator('#nav-offers')).to_be_focused()
+    page.reload(wait_until='networkidle')
+    expect(page.locator('#sources-announcement')).to_be_hidden()
+    page.evaluate('localStorage.clear()')
+    page.reload(wait_until='networkidle')
+    page.locator('#announcement-discover').click()
+    expect(page.locator('#sources-view')).to_be_visible()
+    expect(page.locator('#sources-announcement')).to_be_hidden()
+    page.reload(wait_until='networkidle')
+    expect(page.locator('#sources-announcement')).to_be_hidden()
+    assert not calls
+
+
+def test_announcement_works_without_browser_storage_on_mobile(sources_screen):
+    page, calls, _ = sources_screen
+    page.add_init_script("Object.defineProperty(window, 'localStorage', {get(){throw new Error('blocked')}})")
+    page.set_viewport_size({'width':390,'height':844})
+    page.reload(wait_until='networkidle')
+    expect(page.locator('#sources-announcement')).to_be_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.locator('#announcement-close').click()
+    expect(page.locator('#sources-announcement')).to_be_hidden()
+    page.locator('#nav-offers').click()
+    expect(page.locator('#offers-view')).to_be_visible()
+    assert not calls

@@ -146,6 +146,22 @@
     }
   });
   window.addEventListener("hashchange", showView); showView();
+  const announcement = byId("sources-announcement"), announcementKey = "marketdesk.sources-announcement.v1";
+  let announcementDismissed = false;
+  try { announcementDismissed = localStorage.getItem(announcementKey) === "dismissed"; } catch { /* Storage may be disabled. */ }
+  announcement.hidden = announcementDismissed;
+  function dismissAnnouncement() {
+    announcement.hidden = true;
+    try { localStorage.setItem(announcementKey, "dismissed"); } catch { /* Keep dismissal effective for this page. */ }
+  }
+  byId("announcement-close").addEventListener("click", () => {
+    dismissAnnouncement();
+    document.querySelector('.primary-nav [aria-current="page"]').focus({preventScroll:true});
+  });
+  byId("announcement-discover").addEventListener("click", () => {
+    dismissAnnouncement();
+    byId("nav-sources").focus({preventScroll:true});
+  });
   document.addEventListener("click", event => {
     for (const details of document.querySelectorAll(".source-feeds[open]")) if (!details.contains(event.target)) details.open = false;
   });
