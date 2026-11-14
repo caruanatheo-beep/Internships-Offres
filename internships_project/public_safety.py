@@ -50,7 +50,7 @@ def public_job_url(value: str) -> str:
 def validate_snapshot(data: dict) -> None:
     if set(data) != {"updated", "generated", "sources", "offers"}:
         raise ValueError("Publication refused: unexpected snapshot fields")
-    if set(data["sources"]) != {"checked", "unavailable", "retained"}:
+    if set(data["sources"]) - {"partial"} != {"checked", "unavailable", "retained"}:
         raise ValueError("Publication refused: unexpected diagnostic fields")
     if any(type(value) is not int or value < 0 for value in data["sources"].values()):
         raise ValueError("Publication refused: invalid diagnostic count")

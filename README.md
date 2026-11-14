@@ -116,18 +116,15 @@ avant l’envoi et refuse les adresses email dans le texte.
 `POST /archive`, protégé par le même secret, retire les propositions intégrées.
 Les archives sont purgées après 30 jours lors d’une relève.
 
-Le workflow `Deliver source suggestions` relève la boîte toutes les heures
-(avec les délais possibles de GitHub), indépendamment des collectes d’offres,
-et reste lançable manuellement. Il réutilise les sept secrets SMTP existants
-de l’environnement `email-alerts`. `SOURCE_SUGGESTIONS_TOKEN`, secret du même
-environnement et du récepteur, protège la relève et l’accusé de traitement.
-La variable `SOURCE_SUGGESTIONS_ENABLED=true` active le workflow.
+Les suggestions ne déclenchent aucun email. Elles sont consultables dans Sources
+après enregistrement par le récepteur public. Les alertes des nouvelles offres
+continuent séparément avec le SMTP GitHub existant.
 
-L’interface confirme l’enregistrement, pas l’arrivée du mail. En cas d’échec
-SMTP, le lot reste disponible après expiration du bail de dix minutes.
-Une coupure entre l’acceptation SMTP et l’accusé peut produire un doublon :
-l’envoi SMTP et l’écriture de l’accusé ne forment pas une transaction commune.
-Le récepteur ne reçoit aucun identifiant SMTP ni aucune clé IA.
+Le récepteur n'est pas encore déployé : `SOURCE_REQUEST_ENDPOINT` reste vide et
+le formulaire est désactivé tant qu'une écriture réelle n'a pas été validée.
+Aucun Google Form n'est utilisé. Le site GitHub Pages est statique : le fichier
+des offres est écrit par GitHub Actions, et la saisie des visiteurs nécessite
+un récepteur distant pour devenir visible aux autres visiteurs.
 
 ## Développement
 

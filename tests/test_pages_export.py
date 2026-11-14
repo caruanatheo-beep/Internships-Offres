@@ -56,6 +56,17 @@ def test_export_only_public_fields(tmp_path, snapshot):
     assert all(set(source)=={'name','category','url','feeds','logo'} for source in catalog['sources'])
 
 
+def test_public_source_counts_distinguish_partial_and_cached(tmp_path,snapshot,monkeypatch):
+    monkeypatch.setattr(internships,'source_checks',lambda:{
+        'partial':{'status':'stale','cache_status':'partial'},
+        'delayed_partial':{'status':'stale','cache_status':'backoff','error':'collecte incomplète : 1 requête(s)'},
+        'cached':{'status':'stale','cache_status':'stale','count':5},
+        'unreachable':{'status':'error','cache_status':'none'}})
+    builder.build_site(tmp_path/'site')
+    assert json.loads((tmp_path/'site/offers.json').read_bytes())['sources']=={
+        'checked':4,'unavailable':1,'partial':2,'retained':1}
+
+
 @pytest.mark.parametrize('form_id',['person@example.com','https://evil.invalid/suggestions','short'])
 def test_build_rejects_recipient_addresses_or_invalid_form_config(tmp_path,snapshot,monkeypatch,form_id):
     monkeypatch.setenv('SOURCE_REQUEST_ENDPOINT',form_id)

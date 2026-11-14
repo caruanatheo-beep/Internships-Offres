@@ -63,6 +63,9 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
             "categories": [category for category in categories if jobs.matching_opportunities([job], category)],
         })
     checks = jobs.source_checks()
+    partial = {name for name, check in checks.items() if check.get('status') == 'stale'
+               and (check.get('cache_status') == 'partial' or
+                    str(check.get('error') or '').startswith('collecte incomplète'))}
     if collect:
         for name, check in checks.items():
             if check.get("status") in {"error", "stale"} or name.startswith("BNP Paribas") or name == "ODDO BHF":
@@ -73,7 +76,8 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
     payload = json.dumps({"updated": updated.isoformat(), "generated": datetime.now(timezone.utc).isoformat(),
                           "sources": {"checked": len(checks),
                                       "unavailable": sum(c.get("status") == "error" for c in checks.values()),
-                                      "retained": sum(c.get("status") == "stale" for c in checks.values())},
+                                      "partial": len(partial),
+                                      "retained": sum(c.get("status") == "stale" and name not in partial for name, c in checks.items())},
                           "offers": records}, ensure_ascii=False, separators=(",", ":")).encode()
     assert_public(payload, "offers.json")
     validate_snapshot(json.loads(payload))

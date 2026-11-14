@@ -154,8 +154,8 @@ async function load() {
     if ($("family").selectedIndex < 0) $("family").selectedIndex = 0;
     if ($("start").selectedIndex < 0) $("start").selectedIndex = 0;
     const s = data.sources;
-    $("updated").textContent = "Actualisé le " + new Intl.DateTimeFormat("fr-FR", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Paris"}).format(new Date(data.updated)) + (s.unavailable ? " · Collecte partielle" : "");
-    $("updated").title = `Heure de Paris · ${s.checked} sources · ${s.unavailable} indisponibles · ${s.retained} collectes partielles`;
+    $("updated").textContent = "Actualisé le " + new Intl.DateTimeFormat("fr-FR", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Paris"}).format(new Date(data.updated)) + (s.unavailable || s.partial || s.retained ? " · Certaines sources à vérifier" : "");
+    $("updated").title = `Heure de Paris · ${s.checked} sources · ${s.unavailable} sources indisponibles · ${s.partial || 0} collectes partielles · ${s.retained} sources avec offres conservées`;
     $("message").textContent = ""; render();
   } catch { $("message").textContent = "Impossible de charger les nouvelles données. Réessaie dans un instant. Les offres déjà affichées sont conservées."; }
 }

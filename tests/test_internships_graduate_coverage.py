@@ -66,7 +66,7 @@ def test_workday_junior_search_verifies_detail(monkeypatch, detail):
     terms = []
     def post(url, **kwargs):
         term = kwargs['json']['searchText']; terms.append(term)
-        rows = [{"title": "Junior Analyst", "locationsText": "London", "externalPath": "/job/London/Junior-Analyst_123"}] if term == "Junior" else []
+        rows = [{"title": "Junior Analyst", "locationsText": "London", "externalPath": "/job/London/Junior-Analyst_123"}] if term == "" else []
         return SimpleNamespace(json=lambda: {"jobPostings": rows, "total": len(rows)}, raise_for_status=lambda: None)
     def get(url, **kwargs):
         if detail == "unavailable":
@@ -89,7 +89,7 @@ def test_workday_junior_search_verifies_detail(monkeypatch, detail):
         assert len(found) == (1 if detail == "entry" else 0)
         if found:
             assert found[0].kind == "Graduate" and jobs._eligible_offer(found[0])
-    assert "Junior" in terms
+    assert terms == [""]
 
 
 @pytest.mark.parametrize("title,employment,expected", [

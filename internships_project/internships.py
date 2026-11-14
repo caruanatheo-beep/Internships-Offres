@@ -234,17 +234,17 @@ JOBTEASER_CACHE_SECONDS = 24 * 3600
 SOURCE_RETRY_BASE_SECONDS = 15 * 60
 SOURCE_RETRY_MAX_SECONDS = 6 * 3600
 SOURCE_CONNECTOR_VERSIONS = {
-    "Société Générale Careers": 5, "BNP Paribas": 6, "BNP Paribas CIB": 4,
+    "Société Générale Careers": 5, "BNP Paribas": 7, "BNP Paribas CIB": 4,
     "Amundi": 3, "Crédit Agricole CIB": 2, "Crédit Mutuel Arkéa": 2, "Covéa Finance": 2,
-    "DNCA": 2, "BNP Paribas Asset Management": 6, "BNP Paribas VIE": 6,
-    "BNP Paribas Graduate": 2,
+    "DNCA": 2, "BNP Paribas Asset Management": 7, "BNP Paribas VIE": 7,
+    "BNP Paribas Graduate": 3,
     "ODDO BHF": 2, "La Banque Postale": 2,
-    **{name: 4 for name in WORKDAY},
+    **{name: 6 for name in WORKDAY},
     **{name: 3 for name in GREENHOUSE.values()},
     **{name: 2 for name in LEVER.values()},
     **{name: 3 for name in ORACLE_CAREER_BOARDS},
-    "BBVA": 5,
-    "ING": 5,
+    "BBVA": 6,
+    "ING": 6,
     "Optiver": 3,
 }
 JOBTEASER_INDEX = "https://assets-cf.jobteaser.com/sitemaps/sitemap.xml"
@@ -1698,6 +1698,7 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
 
                 direct_links = 0
                 listing_failures = 0
+                listing_failure_reason = ""
                 visited = {listing_url}
                 # Follow the public pagination links; the AJAX button can be
                 # covered by a consent banner or finish after a fixed wait.
@@ -1714,9 +1715,10 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                                 candidates[offer_url] = label
                     # Pagination is inside <nav>, excluded by the offer parser.
                     anchors = page.locator("a").evaluate_all(
-                        "els => els.map(a => ({href:a.href,label:(a.textContent.trim() || a.getAttribute('aria-label') || '')}))")
+                        "els => els.map(a => ({href:a.href,label:(a.textContent.trim() || a.getAttribute('aria-label') || ''),disabled:a.getAttribute('aria-disabled') === 'true' || !!a.closest('.disabled, [disabled]')}))")
                     next_url = next((a["href"] for a in anchors
                         if re.fullmatch(r"(?:suivant|next)(?:\s*[›»→])?", a["label"], re.I)
+                        and not a.get('disabled')
                         and urlparse(a["href"]).scheme == "https"
                         and urlparse(a["href"]).hostname == host
                         and urlparse(a["href"]).path == urlparse(listing_url).path), "")
@@ -1724,23 +1726,35 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                         break
                     if next_url in visited:
                         listing_failures += 1
+                        listing_failure_reason = "pagination répétée"
                         break
                     visited.add(next_url)
                     try:
                         response = page.goto(next_url, wait_until="domcontentloaded", timeout=20_000)
                         if response is not None and response.status >= 400:
-                            raise ValueError("pagination BNP indisponible")
-                    except (PlaywrightTimeoutError, ValueError):
+                            raise ValueError(f"pagination BNP HTTP {response.status}")
+                    except (PlaywrightTimeoutError, ValueError) as exc:
                         listing_failures += 1
+                        listing_failure_reason = "délai de pagination dépassé" if isinstance(exc,PlaywrightTimeoutError) else str(exc)
                         break
                 else:
                     listing_failures += 1
+                    listing_failure_reason = "limite de 40 pages atteinte"
 
                 detail_company = "BNP Paribas" if company == "BNP Paribas Asset Management" else company
                 jobs: list[Opportunity] = []
                 for offer_url, label in candidates.items():
                     try:
-                        detail_response = page.goto(offer_url, wait_until="domcontentloaded", timeout=8_000)
+                        for attempt in range(2):
+                            try:
+                                detail_response = page.goto(offer_url, wait_until="domcontentloaded", timeout=15_000)
+                                if detail_response is not None and detail_response.status in (500,502,503,504) and attempt == 0:
+                                    continue
+                                break
+                            except PlaywrightTimeoutError:
+                                if attempt: raise
+                        if detail_response is not None and detail_response.status in (404,410):
+                            continue  # An expired advert must not retain an old cached offer.
                         if detail_response is not None and detail_response.status >= 400:
                             failed_urls.append(offer_url)
                             continue
@@ -1752,7 +1766,10 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                     except (PlaywrightTimeoutError, ValueError, TypeError):
                         failed_urls.append(offer_url)
                 if listing_failures or failed_urls:
-                    raise _PartialSourceError(jobs, failed_urls, search_failures=listing_failures)
+                    failure = _PartialSourceError(jobs, failed_urls, search_failures=listing_failures)
+                    if listing_failure_reason:
+                        failure.args = (str(failure) + "; " + listing_failure_reason,)
+                    raise failure
                 if jobs:
                     return list({job.url: job for job in jobs}.values())
                 if direct_links:
@@ -2793,6 +2810,9 @@ def _workday_publication_date(start_date: object = "", posted_on: object = "",
     return (today - timedelta(days=int(match.group(1)))).isoformat() if match else ""
 
 
+_workday_requests = threading.BoundedSemaphore(4)
+
+
 def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) -> list[Opportunity]:
     if company == "BBVA" and _client is None:
         # Reuse one connection: repeated parallel TLS connections to BBVA time out.
@@ -2803,24 +2823,38 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
     base = f"https://{host}/wday/cxs/{tenant}/{site}"
 
     def listing(term: str, offset: int, facets: dict) -> dict:
-        for attempt in range(2):
+        for attempt in range(3):
             try:
-                response = client.post(
-                    f"{base}/jobs",
-                    json={"appliedFacets": facets, "limit": 20, "offset": offset, "searchText": term},
-                    timeout=(8, 20),
-                )
+                with _workday_requests:
+                    response = client.post(
+                        f"{base}/jobs",
+                        json={"appliedFacets": facets, "limit": 20, "offset": offset, "searchText": term},
+                        timeout=(8, 25),
+                    )
+                if getattr(response, 'status_code', 200) in (429, 500, 502, 503, 504) and attempt < 2:
+                    time.sleep(attempt + 1)
+                    continue
                 response.raise_for_status()
-                payload = response.json()
+                try:
+                    payload = response.json()
+                except ValueError as exc:
+                    if attempt < 2:
+                        time.sleep(attempt + 1)
+                        continue
+                    raise ValueError('Workday : réponse non JSON après trois tentatives') from exc
                 if not isinstance(payload, dict) or not isinstance(payload.get("jobPostings"), list):
                     raise ValueError("Catalogue Workday invalide")
                 return payload
             except (requests.Timeout, requests.ConnectionError):
-                if attempt:
+                if attempt == 2:
                     raise
+                time.sleep(attempt + 1)
 
     internship_facets = {}
-    terms = ("Paris", "Trading", "Graduate", "VIE", "Intern", "Internship", "Markets", "Quantitative", "Junior")
+    # One complete scan avoids overlapping keyword searches and their 400-row cap.
+    # Title/contract/market filters are applied below, not weakened on the server.
+    searches = [({}, "")]
+    catalogue = None
     if company == "BBVA":
         catalogue = listing("", 0, {})
         for facet in catalogue.get("facets", []):
@@ -2831,32 +2865,41 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                     internship_facets["workerSubType"] = ids
         if not internship_facets:
             raise ValueError("Filtre de stages BBVA indisponible")
-        # The contract facet also finds internships without 'Intern' in their title.
-        # Keywords cover graduate/VIE roles and internships classified differently.
-        terms = ("", "Internship", "Intern", "Graduate", "VIE", "Junior")
+        # Also find internships without a contract word in the job title.
+        searches = [(internship_facets, "Internship"), ({}, "")]
 
-    def search(term: str) -> tuple[list[tuple[str, Opportunity]], Exception | None]:
+    def search(query: tuple[dict, str]) -> tuple[list[tuple[str, Opportunity]], Exception | None]:
+        facets, contract = query
         found: list[tuple[str, Opportunity]] = []
-        for offset in range(0, 400, 20):
+        seen_pages: set[tuple[str, ...]] = set()
+        total = 0
+        for offset in range(0, 5000, 20):
             try:
-                payload = listing(term, offset, internship_facets if not term else {})
+                payload = catalogue if catalogue is not None and not facets and offset == 0 else listing("", offset, facets)
             except (requests.RequestException, ValueError) as exc:
                 return found, exc
             rows = payload.get("jobPostings") or []
+            # Workday often reports total=0 after the first page, even when
+            # further pages exist. Keep the total from the initial response.
+            total = max(total, int(payload.get("total") or 0))
+            signature = tuple(str(item.get("externalPath") or "") for item in rows)
+            if rows and signature in seen_pages:
+                return found, ValueError("Pagination Workday répétée")
+            seen_pages.add(signature)
             for item in rows:
                 path = str(item.get("externalPath") or "")
                 if not path.startswith("/job/"):
                     continue
                 job = _opportunity(
                     str(item.get("title") or ""), company, str(item.get("locationsText") or ""),
-                    "Internship" if internship_facets and not term else "",
+                    contract,
                     f"https://{host}/en-US/{site}{path}",
                     _workday_publication_date(posted_on=item.get("postedOn")),
                     defer_junior_context=True,
                 )
                 if job:
                     found.append((path, replace(job, source=f"Workday {company}")))
-            if len(rows) < 20 or offset + 20 >= int(payload.get("total") or 0):
+            if len(rows) < 20 or total and offset + len(rows) >= total:
                 break
         else:
             return found, ValueError("Pagination Workday incomplète")
@@ -2864,12 +2907,12 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
 
     candidates: dict[str, Opportunity] = {}
     search_errors: list[Exception] = []
-    with ThreadPoolExecutor(max_workers=1 if company == "BBVA" else 4) as pool:
-        for result, error in pool.map(search, terms):
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        for result, error in pool.map(search, searches):
             candidates.update(result)
             if error:
                 search_errors.append(error)
-    if len(search_errors) == len(terms) and not candidates:
+    if len(search_errors) == len(searches) and not candidates:
         raise search_errors[0]
 
     failed_details: list[str] = []

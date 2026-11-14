@@ -7,6 +7,36 @@ import pytest
 from internships_project import internships as jobs
 
 
+def test_bnp_disabled_next_link_is_not_a_pagination_failure(monkeypatch):
+    from playwright import sync_api
+    root='https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/stage'
+    provider=MagicMock()
+    page=provider.__enter__.return_value.chromium.launch.return_value.new_page.return_value
+    page.goto.return_value.status=200
+    page.content.return_value='<a href="/emploi-carriere/offre-emploi/stage-rh">Stage RH</a>'
+    page.locator.return_value.evaluate_all.return_value=[{'href':root,'label':'Suivant','disabled':True}]
+    monkeypatch.setattr(sync_api,'sync_playwright',lambda:provider)
+    assert jobs._bnp_group_jobs_browser('BNP Paribas',root)==[]
+    assert page.goto.call_count==1
+
+
+@pytest.mark.parametrize('status',[404,410,403])
+def test_bnp_expired_details_are_removed_but_access_failures_remain_partial(monkeypatch,status):
+    from playwright import sync_api
+    root='https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/stage'
+    offer='https://group.bnpparibas/emploi-carriere/offre-emploi/stage-sales'
+    provider=MagicMock()
+    page=provider.__enter__.return_value.chromium.launch.return_value.new_page.return_value
+    page.goto.side_effect=[SimpleNamespace(status=200),SimpleNamespace(status=status)]
+    page.content.return_value=f'<a href="{offer}">Stage Sales</a>'
+    page.locator.return_value.evaluate_all.return_value=[]
+    monkeypatch.setattr(sync_api,'sync_playwright',lambda:provider)
+    if status==403:
+        with pytest.raises(jobs._PartialSourceError) as failure:jobs._bnp_group_jobs_browser('BNP Paribas',root)
+        assert failure.value.failed_urls=={offer}
+    else:assert jobs._bnp_group_jobs_browser('BNP Paribas',root)==[]
+
+
 @pytest.mark.parametrize("environment,headless", [
     ({}, True), ({"DISPLAY": ":99"}, True),
     ({"GITHUB_ACTIONS": "true", "DISPLAY": ":99"}, False),
