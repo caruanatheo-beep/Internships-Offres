@@ -5,11 +5,95 @@ const normalize = (s) => String(s || "").normalize("NFKD").replace(/\p{M}/gu, ""
 let offers = [], page = 1;
 let sortMode = "rank";
 const size = 50;
+const filterViews = new Map();
+let openFilter = null;
+function enhanceFilter(select) {
+  const field = select.parentElement;
+  const trigger = document.createElement("button"), value = document.createElement("span");
+  const chevron = document.createElement("span"), menu = document.createElement("div");
+  trigger.type = "button"; trigger.id = select.id + "-trigger"; trigger.className = "filter-trigger";
+  value.id = select.id + "-value"; chevron.className = "filter-chevron"; chevron.setAttribute("aria-hidden", "true");
+  trigger.append(value, chevron);
+  menu.id = select.id + "-menu"; menu.className = "filter-menu"; menu.hidden = true;
+  menu.setAttribute("role", "listbox"); menu.setAttribute("aria-labelledby", select.id + "-label");
+  trigger.setAttribute("role", "combobox"); trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-expanded", "false"); trigger.setAttribute("aria-controls", menu.id);
+  trigger.setAttribute("aria-labelledby", select.id + "-label " + value.id);
+  $(select.id + "-label").htmlFor = trigger.id;
+  field.append(trigger, menu); select.hidden = true;
+  let active = 0, typed = "", typedAt = 0;
+  const isOpen = () => !menu.hidden;
+  function highlight(index, scroll = true) {
+    active = Math.max(0, Math.min(index, menu.children.length - 1));
+    for (const [i, option] of [...menu.children].entries()) option.classList.toggle("is-highlighted", i === active);
+    if (isOpen() && menu.children[active]) {
+      trigger.setAttribute("aria-activedescendant", menu.children[active].id);
+      if (scroll) menu.children[active].scrollIntoView({block:"nearest"});
+    }
+  }
+  function close() {
+    menu.hidden = true; trigger.setAttribute("aria-expanded", "false");
+    trigger.removeAttribute("aria-activedescendant"); field.classList.remove("is-open");
+    if (openFilter === api) openFilter = null;
+    typed = "";
+  }
+  function sync() {
+    value.textContent = select.selectedOptions[0]?.textContent || "";
+    trigger.classList.toggle("is-selected", Boolean(select.value));
+    for (const [i, option] of [...menu.children].entries()) option.setAttribute("aria-selected", String(i === select.selectedIndex));
+  }
+  function choose(index) {
+    select.selectedIndex = index; close(); sync();
+    select.dispatchEvent(new Event("change", {bubbles:true})); trigger.focus();
+  }
+  function open() {
+    if (openFilter) openFilter.close();
+    menu.hidden = false; trigger.setAttribute("aria-expanded", "true"); field.classList.add("is-open");
+    const box = trigger.getBoundingClientRect();
+    menu.classList.toggle("opens-up", window.innerHeight - box.bottom < menu.getBoundingClientRect().height && box.top > window.innerHeight - box.bottom);
+    openFilter = api; highlight(select.selectedIndex);
+  }
+  function refresh() {
+    close(); menu.replaceChildren();
+    for (const [i, option] of [...select.options].entries()) {
+      const item = document.createElement("div"); item.id = select.id + "-option-" + i;
+      item.className = "filter-option"; item.setAttribute("role", "option"); item.textContent = option.textContent;
+      item.addEventListener("click", () => choose(i));
+      item.addEventListener("pointermove", () => highlight(i, false)); menu.append(item);
+    }
+    sync();
+  }
+  const api = {close, sync, refresh};
+  trigger.addEventListener("click", () => isOpen() ? close() : open());
+  trigger.addEventListener("keydown", (event) => {
+    if (event.key === "Tab") {close(); return;}
+    if (event.key === "Escape") {if (isOpen()) event.preventDefault(); close(); return;}
+    if (["ArrowDown", "ArrowUp", "Home", "End", "Enter", " "].includes(event.key)) {
+      event.preventDefault();
+      const wasOpen = isOpen(); if (!wasOpen) open();
+      if (event.key === "Home") highlight(0);
+      else if (event.key === "End") highlight(menu.children.length - 1);
+      else if (wasOpen && ["Enter", " "].includes(event.key)) choose(active);
+      else if (wasOpen) highlight(active + (event.key === "ArrowDown" ? 1 : -1));
+    } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault(); if (!isOpen()) open();
+      typed = Date.now() - typedAt > 700 ? event.key : typed + event.key; typedAt = Date.now();
+      const choices = [...select.options];
+      const match = choices.findIndex(option => normalize(option.textContent).startsWith(normalize(typed)));
+      if (match >= 0) highlight(match);
+    }
+  });
+  filterViews.set(select.id, api); refresh();
+}
+document.addEventListener("pointerdown", (event) => {
+  if (openFilter && !event.target.closest(".filter-field.is-open")) openFilter.close();
+});
 function safeLink(value) {
   try { const u = new URL(value); return u.protocol === "https:" && !u.username && !u.password ? u.href : null; }
   catch { return null; }
 }
 function render() {
+  for (const view of filterViews.values()) view.sync();
   const terms = normalize($("search").value).split(/\s+/).filter(Boolean);
   const today = new Intl.DateTimeFormat("en-CA", {timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date());
   const week = new Date(today + "T12:00:00Z"); week.setUTCDate(week.getUTCDate() - 6);
@@ -51,6 +135,7 @@ function render() {
 function options(id, pairs) {
   $(id).replaceChildren($(id).options[0]);
   for (const [value,label] of pairs) { const o = document.createElement("option"); o.value = value; o.textContent = label; $(id).append(o); }
+  filterViews.get(id)?.refresh();
 }
 async function load() {
   try {
@@ -80,4 +165,5 @@ for (const button of $("sort-options").querySelectorAll("button")) {
 }
 $("previous").addEventListener("click",()=>{page--;render();$("count").scrollIntoView({block:"start"});});
 $("next").addEventListener("click",()=>{page++;render();$("count").scrollIntoView({block:"start"});});
+for (const id of controls.slice(1)) enhanceFilter($(id));
 load();
