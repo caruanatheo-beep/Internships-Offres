@@ -85,7 +85,7 @@ h2{margin:0;font-size:15px;line-height:1.4}
 .logo img{width:30px;height:30px;object-fit:contain}
 .logo img[hidden],.initials[hidden]{display:none}
 .initials{font-size:11px;font-weight:750}
-.company{font-size:13px;font-weight:550;color:#536b84;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.company{font-size:15px;font-weight:600;color:#536b84;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kind{margin-left:auto;white-space:nowrap;font-size:10px;padding:3px 7px;background:#edf2f7;border:1px solid var(--line);border-radius:5px;color:#48637f}
 .arrow{display:grid;place-items:center;width:23px;height:23px;border-radius:6px;color:#7d91a7;background:#f7f9fc;font-size:16px;transition:background .15s,color .15s}
 .card:hover .arrow{background:#edf3f9;color:var(--blue)}
@@ -134,7 +134,7 @@ footer{padding:18px 0 8px;border-top:1px solid var(--line);color:var(--muted);fo
 .source-link .logo{flex-shrink:0;width:40px;height:40px}
 .source-link .logo img{width:34px;height:34px}
 .source-card-copy{min-width:0;flex:1}
-.source-card h3{margin:0 0 4px;font-size:13px;line-height:18px;font-weight:650;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.source-card h3{margin:0 0 4px;font-size:14px;line-height:20px;font-weight:650;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .source-type{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--muted)}
 .source-arrow{align-self:flex-start;margin-top:2px;font-size:14px;color:#8a9fb5}
 .source-link:hover .source-arrow{color:var(--blue)}
