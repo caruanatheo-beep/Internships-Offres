@@ -203,10 +203,13 @@ _NON_MARKET_ROLE = re.compile(
     r"(?:collateral|processing|operations|forex) officer|post.trade|post.marche|"
     r"reconciliation|rapprochement|issuers? servicing|securities (?:lending|financing) officer|"
     r"fund (?:controller|execution officer)|gestionnaire.{0,30}fixed income|"
-    r"juriste|legal counsel|audit|controls? governance|expressions? of interest|talent pool|"
-    r"controle de gestion|actifs (?:non cotes|prives)|dette privee|"
+    r"juriste|juridique|legal counsel|audit|controls? governance|expressions? of interest|talent pool|"
+    r"(?:markets?|clearing|treasury|branch) operations|gestionnaire.{0,30}operations|"
+    r"consumer financial services|retail banking|branch.{0,30}(?:trainee|banker)|"
+    r"financial reporting|reporting financier|cont[r]?ole(?:ur)? de gestion|actifs (?:non cotes|prives)|dette privee|"
     r"immobilier\w*|real estate|property management)\b", re.IGNORECASE,
 )
+_MACRO_RESEARCH = re.compile(r"\b(?:recherche en macroeconomie|macroeconomic research)\b", re.I)
 _CORPORATE_ROLE = re.compile(
     r"\b(?:financements? structures?|structured (?:export )?finance|credit corporate|"
     r"corporate credit|corporate lending|equity and debt advisory|debt advisory|acquisition finance)\b", re.I,
@@ -239,10 +242,10 @@ JOBTEASER_CACHE_SECONDS = 24 * 3600
 SOURCE_RETRY_BASE_SECONDS = 15 * 60
 SOURCE_RETRY_MAX_SECONDS = 6 * 3600
 SOURCE_CONNECTOR_VERSIONS = {
-    "Société Générale Careers": 5, "BNP Paribas": 7, "BNP Paribas CIB": 4,
+    "Société Générale Careers": 5, "BNP Paribas": 8, "BNP Paribas CIB": 5,
     "Amundi": 3, "Crédit Agricole CIB": 2, "Crédit Mutuel Arkéa": 2, "Covéa Finance": 2,
-    "DNCA": 2, "BNP Paribas Asset Management": 7, "BNP Paribas VIE": 7,
-    "BNP Paribas Graduate": 4,
+    "DNCA": 2, "BNP Paribas Asset Management": 8, "BNP Paribas VIE": 8,
+    "BNP Paribas Graduate": 5,
     "ODDO BHF": 2, "La Banque Postale": 2,
     **{name: 6 for name in WORKDAY},
     **{name: 3 for name in GREENHOUSE.values()},
@@ -252,7 +255,9 @@ SOURCE_CONNECTOR_VERSIONS = {
     "ING": 6,
     "Optiver": 3,
     "JobTeaser · sitemap": 2,
-    "HSBC Continental Europe": 2,
+    "HSBC Continental Europe": 3,
+    "CFM": 2,
+    "Santander CIB": 7,
 }
 JOBTEASER_INDEX = "https://assets-cf.jobteaser.com/sitemaps/sitemap.xml"
 JOBTEASER_EMPLOYERS = {
@@ -393,7 +398,9 @@ def _normalized_offer_text(value: str) -> str:
 def _canonical_location(location: str) -> str:
     aliases = {"singapour": "singapore", "londres": "london",
                "francfort": "frankfurt", "geneve": "geneva"}
-    return " ".join(aliases.get(word, word) for word in _normalized_offer_text(location).split())
+    display = _display_offer_location(location)
+    normalized = location if display == "Non précisé" else display
+    return " ".join(aliases.get(word, word) for word in _normalized_offer_text(normalized).split())
 
 
 def _cached_detail(job: Opportunity) -> Opportunity | None:
@@ -441,6 +448,7 @@ def _canonical_title(title: str) -> str:
     text = unicodedata.normalize("NFKD", title.casefold())
     text = "".join(char for char in text if not unicodedata.combining(char))
     text = re.sub(r"^(?:(?:stage|internship|intern|v\.?i\.?e\.?)\s*[:\-–]\s*)+", "", text)
+    text = re.sub(r"\s*\(v\.?i\.?e\.?\)\s*$", "", text)
     text = text.replace("marchs", "marches")
     return re.sub(r"\W+", "", text)
 
@@ -803,7 +811,7 @@ def _market_candidate(title: str) -> bool:
     """A generic junior analyst needs its detail before deciding desk relevance."""
     normalized = unicodedata.normalize("NFKD", title.casefold())
     normalized = "".join(c for c in normalized if not unicodedata.combining(c))
-    return _market_relevant(title) or (_junior_analyst(title)
+    return _market_relevant(title) or bool(_MACRO_RESEARCH.search(normalized)) or (_junior_analyst(title)
         and not _NON_MARKET_ROLE.search(normalized) and not _CORPORATE_ROLE.search(normalized))
 
 
@@ -833,6 +841,8 @@ def _market_relevant_with_context(title: str, context: str = "") -> bool:
         return False
     if _CORPORATE_ROLE.search(normalized_title) and not _MARKET_DESK.search(normalized_title):
         return False
+    if _MACRO_RESEARCH.search(normalized_title):
+        return bool(re.search(r"global research|mouvements de marches|financial markets", normalized))
     # A job's own team can disqualify a generic title; merely collaborating
     # with Middle Office (or a group offering it) must not exclude a desk role.
     if re.search(
@@ -905,7 +915,7 @@ def _family(title: str, context: str = "") -> str:
         title,
     ):
         return "Asset Management"
-    if any(term in title for term in ("quant", "research", "analyst", "investment", "portfolio")):
+    if any(term in title for term in ("quant", "research", "recherche", "analyst", "investment", "portfolio")):
         return "Quant / Research"
     return "Risk / Support"
 
@@ -1268,6 +1278,7 @@ class _CareerHTML(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self.headings: list[str] = []
+        self.primary_headings: list[str] = []
         self.links: list[tuple[str, str]] = []
         self.events: list[tuple[str, str, str]] = []
         self._skip = 0
@@ -1306,6 +1317,8 @@ class _CareerHTML(HTMLParser):
         if tag == self._heading_tag and self._heading is not None:
             heading = " ".join(self._heading)
             self.headings.append(heading)
+            if tag == "h1":
+                self.primary_headings.append(heading)
             self.events.append(("heading", "", heading))
             self._heading = None
             self._heading_tag = None
@@ -1391,6 +1404,8 @@ def _labelled_job_location(parts: list[str]) -> str:
             value = match[1].strip()
             if not value and index + 1 < len(parts):
                 value = parts[index + 1].strip()
+            if _normalized_offer_text(value) in {"all", "any", "tous", "toutes", "select", "select all"}:
+                continue
             value = re.split(rf"\b(?:{boundary})\b|\(Ce lien s'ouvre", value, maxsplit=1, flags=re.I)[0].strip(" |,:")
             if _plausible_location(value) and not re.search(r"https?://|[.!?;] |\b(?:recherche|recrute|sélectionner)\b", value, re.I):
                 return value
@@ -1491,7 +1506,18 @@ def _career_detail(url: str, company: str, fallback_title: str = "",
     structured_title = str(structured.get("title") or "").strip()
     if portal_company == "Candriam":
         fallback_title = re.sub(r"^\d{4}-\d+\s*[-–]\s*", "", fallback_title)
-    title = next((heading for heading in page.headings if _market_relevant(heading)), "") or structured_title or fallback_title
+    # Related vacancies must never replace this posting's actual title.
+    primary = next((heading for heading in page.primary_headings
+                    if _normalized_offer_text(heading) not in {"career opportunities", "careers", "offres d emploi"}), "")
+    title = structured_title or primary or fallback_title
+    if not title:
+        title = next((heading for heading in page.headings if _market_candidate(heading)), "")
+    deadline = str(structured.get("validThrough") or "")[:10]
+    try:
+        if deadline and date.fromisoformat(deadline) < datetime.now(timezone.utc).date():
+            return None
+    except ValueError:
+        deadline = ""
     if portal_company == "Candriam":
         title = next((heading for heading in page.headings if _canonical_title(heading) == _canonical_title(fallback_title)), fallback_title)
     if not _market_relevant_with_context(title, f'{text} {_plain_text(str(structured.get("description") or ""))}'):
@@ -1638,7 +1664,8 @@ def _career_detail(url: str, company: str, fallback_title: str = "",
     job = _opportunity(title, company, location, employment, url, published,
                        explicit_start or _start_period(offer_text) or _structured_job_start(structured)
                        or _start_period(structured_description) or _title_period(title), role_context=role_context)
-    return replace(job, source=f"Site carrière · {urlparse(url).hostname}", description=full_description[:12_000]) if job else None
+    return replace(job, source=f"Site carrière · {urlparse(url).hostname}", deadline=deadline,
+                   description=full_description[:12_000]) if job else None
 
 
 def _render_public_career_page(url: str, link_selector: str) -> str:
@@ -3079,10 +3106,25 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
             return replace(reused, source=f"Workday career site · {company}")
         try:
             response = client.get(base + path, timeout=(8, 20))
+            if getattr(response, "status_code", 200) in (404, 410):
+                return None
             response.raise_for_status()
             info = response.json().get("jobPostingInfo") or {}
+            if info.get("canApply") is False:
+                return None
             description = str(info.get("jobDescription") or "")
             location = str(info.get("location") or job.location)
+            if _display_offer_location(location) == "Non précisé":
+                # Require a title city, an explicit workplace statement and a matching country.
+                country = _LOCATION_COUNTRY_NAMES.get(_offer_search_text(
+                    str((info.get("country") or {}).get("descriptor") or "")))
+                title_text = _offer_search_text(job.title)
+                detail_text = _offer_search_text(_plain_text(description))
+                places = {f"{city}, {expected_country}" for pattern, city, expected_country in _LOCATION_CITY_PATTERNS
+                          if expected_country == country and (match := pattern.search(title_text))
+                          and re.search(r"\bbased in " + re.escape(match[0]) + r"\b", detail_text)}
+                if len(places) == 1:
+                    location = places.pop()
             if company == "Citi":
                 # Some Workday locations are building names (e.g. TAURUS).
                 # Use an explicit city in the title only when its country
@@ -3622,6 +3664,11 @@ def _merge_duplicate_publication(preferred: Opportunity, other: Opportunity) -> 
 
 def _eligible_offer(job: Opportunity) -> bool:
     """Apply the same role and contract checks to live results and saved snapshots."""
+    try:
+        if job.deadline and date.fromisoformat(job.deadline[:10]) < datetime.now(timezone.utc).date():
+            return False
+    except ValueError:
+        pass
     if job.employment is not None and _kind(job.title, job.employment) != job.kind:
         return False
     if job.employment is None and _kind(job.title) is None and re.search(
@@ -4177,7 +4224,7 @@ _LOCATION_CITY_PATTERNS = [
 
 
 def _display_offer_location(value: str) -> str:
-    """Normalize presentation only; keep raw source places for filtering and deduplication."""
+    """Normalize known cities/countries without overwriting raw source metadata."""
     value = re.split(r"\b(?:Domaine d.activit[eé]|Business area|Job category|Department)\s*:",
                      html.unescape(value or ""), maxsplit=1, flags=re.I)[0]
     value = _plain_text("".join(char for char in value if unicodedata.category(char) != "Co")).strip(" ,|–-")

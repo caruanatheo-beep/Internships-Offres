@@ -1,0 +1,212 @@
+import json
+from datetime import datetime, timezone
+
+import pytest
+
+from internships_project import internships as m
+
+
+@pytest.mark.parametrize("text, expected, month", [
+    ("Stage à partir d'avril 2027.", "avril 2027", "2027-04"),
+    ("Stage à partir d’avril 2027.", "avril 2027", "2027-04"),
+    ("Date de prise de fonction souhaitée : 1er février 2027", "1er février 2027", "2027-02"),
+    ("Date de début du stage : 2027-04-01", "2027-04-01", "2027-04"),
+    ("Start date 2027/01/04 Publication date 2026/10/23", "2027/01/04", "2027-01"),
+    ("Starting date: January 4th, 2027", "January 4th, 2027", "2027-01"),
+    ("Starting on 4 January 2027", "4 January 2027", "2027-01"),
+    ("Démarrage prévu : avril 2027", "avril 2027", "2027-04"),
+    ("Stage à pourvoir dès que possible", "Dès que possible", ""),
+    ("Start date: ASAP", "Dès que possible", ""),
+    ("Stage à partir de mars/avril 2027", "mars/avril 2027", "2027-04"),
+    ("Début de stage à prévoir entre janvier et mars 2027", "entre janvier et mars 2027", "2027-03"),
+])
+def test_explicit_start_formats(text, expected, month):
+    assert m._start_period(text) == expected
+    assert m.start_month(expected) == month
+
+
+@pytest.mark.parametrize("text", [
+    "Date de début de diffusion : 01/04/2027",
+    "Publication : 1er avril 2027. Date limite : 30 juin 2027.",
+    "Nous travaillons sur des marchés depuis avril 2027.",
+    "Date de début : 31/02/2027", "Start date: 2027-13-04",
+    "Starting on 31 February 2027", "Merci de répondre ASAP",
+])
+def test_start_never_uses_publication_deadline_or_invalid_date(text):
+    assert m._start_period(text) == ""
+
+
+def detail(body, structured=None, company="Amundi"):
+    page = "<h1>Stage Assistant Sales H/F</h1>" + body
+    if structured is not None:
+        page += '<script type="application/ld+json">' + json.dumps({
+            "@type": "JobPosting", "employmentType": "Internship", **structured,
+        }) + "</script>"
+    return m._career_detail("https://jobs.amundi.com/offre-de-emploi/emploi-sales_123.aspx",
+                            company, html_override=page)
+
+
+def test_talentsoft_city_is_not_the_entire_location_section():
+    job = detail("<h2>Localisation du poste</h2><h3>Zone géographique</h3>"
+                 "<p>Europe, France, Ile-de-France</p><h3>Ville</h3>"
+                 "<p>Montrouge</p><h2>Critères candidat</h2><p>Master</p>",
+                 {"jobStartDate": "2027-04-01T00:00:00+02:00"})
+    assert (job.location, job.start_period) == ("Montrouge", "2027-04-01")
+
+
+def test_jsonld_location_list_and_country_object_survive_source_fallbacks():
+    job = detail("<p>Rejoignez notre équipe.</p>", {
+        "jobLocation": [
+            {"address": {"addressLocality": "Paris", "addressCountry": {"name": "France"}}},
+            {"address": {"addressLocality": "London", "addressCountry": "UK"}},
+        ], "jobImmediateStart": True,
+    }, company="Kepler Cheuvreux")
+    assert job.location == "Paris, France / London, UK"
+    assert job.start_period == "Dès que possible"
+
+
+def test_structured_description_is_read_even_when_visible_page_is_longer():
+    job = detail("<p>Localisation : Paris</p><p>" + "Notre banque. " * 100 + "</p>", {
+        "description": "Stage à partir d’avril 2027.",
+        "datePosted": "2026-01-01", "validThrough": "2027-05-01",
+    })
+    assert job.location == "Paris"
+    assert job.start_period == "avril 2027"
+
+
+def test_headquarters_and_publication_are_not_job_metadata():
+    job = detail("<p>Localisation : Nanterre</p>", {
+        "hiringOrganization": {"address": {"addressLocality": "London"}},
+        "datePosted": "2026-01-01", "validThrough": "2027-05-01",
+    })
+    assert job.location == "Nanterre"
+    assert job.start_period == ""
+
+
+def test_cached_description_can_recover_missing_start_without_network(monkeypatch):
+    job = m.Opportunity("Stage Sales", "Bank", "Paris", "Stage",
+                        "https://jobs.smartrecruiters.com/bank/1", "2026-11-01", 100)
+    previous = m.replace(job, description="Stage à partir d’avril 2027.")
+    monkeypatch.setattr(m, "_refresh_previous_jobs", {job.url: previous})
+    assert m._cached_detail(job).start_period == "avril 2027"
+
+
+@pytest.mark.parametrize("title, expected", [
+    ("Internship: Group Market Risk [Jan to May 2027]", "January 2027"),
+    ("6 month Internship - Credit Sales: Jan - June 2027", "January 2027"),
+    ("Sales Internship November - February 2027", "November 2026"),
+    ("Stage Sales - Janvier 2027", "Janvier 2027"),
+])
+def test_title_interval_uses_start_not_end(title, expected):
+    assert m._title_period(title) == expected
+
+
+def test_old_cache_recovers_title_interval_without_rewriting_original(tmp_path, monkeypatch):
+    job = m.Opportunity("Internship: Market Risk [Jan to May 2027]", "Bank", "Paris", "Stage",
+                        "https://jobs.smartrecruiters.com/bank/1", "2026-11-01", 100,
+                        start_period="May 2027")
+    path = tmp_path / "internships.json"
+    path.write_text(json.dumps({"version": 3, "updated": datetime.now(timezone.utc).isoformat(),
+                               "jobs": [m.asdict(job)]}), encoding="utf-8")
+    original = path.read_bytes()
+    monkeypatch.setattr(m, "CACHE_PATH", path)
+    result = m._read_cache()
+    assert result[1][0].start_period == "January 2027"
+    assert path.read_bytes() == original
+
+
+def test_bpce_reads_explicit_start_field_and_retains_description(monkeypatch):
+    from types import SimpleNamespace
+    row = {"intitule": "Stage Sales", "organization": "Natixis", "ville": "Charenton-le-Pont",
+           "jobtype": "Stage", "url": "https://recrutement.bpce.fr/job/stage-sales",
+           "date_de_debut": "2027-04-01", "description": "Publié le 1 janvier 2027."}
+    monkeypatch.setattr(m.requests, "get", lambda *a, **kw: SimpleNamespace(
+        raise_for_status=lambda: None, json=lambda: [row]))
+    job, = m._bpce_open_data_jobs()
+    assert (job.location, job.start_period) == ("Charenton-le-Pont", "2027-04-01")
+    assert job.description == row["description"]
+
+
+@pytest.mark.parametrize("title, expected", [
+    ("Stage - 6 mois - Assistant Sales F/H", "Assistant Sales F/H"),
+    ("Stage 6 mois Assistant Sales", "Assistant Sales"),
+    ("Internship: Market Risk Management", "Market Risk Management"),
+    ("6 month Internship - Fixed Income Credit Sales", "Fixed Income Credit Sales"),
+    ("6-month internship – Quantitative Research", "Quantitative Research"),
+    ("Internship - 6 months - Sales", "Sales"),
+    ("Assistant Sales - Stage de 6 mois", "Assistant Sales"),
+    ("Quantitative Research (6 month Internship)", "Quantitative Research"),
+    ("Equity Sales Intern", "Equity Sales"),
+    ("International Sales", "International Sales"),
+    ("Internal Market Risk Analyst", "Internal Market Risk Analyst"),
+    ("Stage", "Stage"),
+])
+def test_display_title_removes_only_internship_labels(title, expected):
+    assert m._display_offer_title(title) == expected
+
+
+def test_card_keeps_original_title_for_tracking_and_tooltip(monkeypatch):
+    monkeypatch.setattr(m, "source_checks", lambda: {})
+    job = m.Opportunity("Stage - 6 mois - Sales <FX>", "Bank", "Paris", "Stage",
+                        "https://jobs.smartrecruiters.com/bank/1", "2026-11-01", 100)
+    board = m.render_opportunities([job], [], datetime.now(timezone.utc))
+    assert '>Sales &lt;FX&gt;</strong>' in board
+    assert 'title="Stage - 6 mois - Sales &lt;FX&gt;"' in board
+    assert 'data-offer-title="Stage - 6 mois - Sales &lt;FX&gt;"' in board
+    assert job.title == "Stage - 6 mois - Sales <FX>"
+
+
+@pytest.mark.parametrize("location, title, expected", [
+    ("- Marex Careers Career opportunities Quantitative Researcher Internship Paris, FR , Front Office",
+     "Quantitative Researcher Internship", "Paris, FR"),
+    ("Apply Casablanca, Région de Casablanca-Settat, Morocco", "Stage Sales", "Casablanca, Région de Casablanca-Settat, Morocco"),
+    ("Apply for this job New York, NY, United States", "Stage Sales", "New York, NY, United States"),
+    ("Francfort, Hesse, Allemagne", "Stage Sales", "Francfort, Hesse, Allemagne"),
+    ("Singapore, Marex Solutions, Full-Time", "Stage Sales", "Singapore"),
+    ("Fontenay sous Bois", "Stage Sales", "Fontenay sous Bois"),
+    ("Careers Career opportunities Apply", "Stage Sales", "Non précisé"),
+    ("", "Stage Sales", ""),
+])
+def test_location_removes_navigation_and_job_metadata(location, title, expected):
+    assert m._clean_job_location(location, title) == expected
+
+
+def test_marex_reads_location_after_real_heading_not_document_title():
+    title = "Quantitative Researcher Internship"
+    page = (f"<html><head><title>{title} - Marex Careers</title></head><body>"
+            f"<h1>Career opportunities</h1><h2>{title}</h2>"
+            "<span>Paris, FR</span><span>,</span><span>Front Office</span>"
+            "<span>,</span><span>Full-Time</span><p>About Marex</p></body></html>")
+    job = m._career_detail("https://www.marex.com/careers/career-opportunities/quantitative-researcher-internship",
+                           "Marex", html_override=page)
+    assert job.location == "Paris, FR"
+
+
+def test_socgen_location_skips_apply_button(monkeypatch):
+    from types import SimpleNamespace
+    url = "https://careers.societegenerale.com/en/job-offers/stage-pricing-123-en"
+    title = "Stage Pricing Equity"
+    page = (f"<head><title>{title} - Casablanca, Morocco</title></head>"
+            f"<span>Internship</span><h1>{title}</h1><a>Apply</a>"
+            "<span>Casablanca, Région de Casablanca-Settat, Morocco</span>"
+            "<span>Reference</span><span>123ABC</span><h2>Responsibilities</h2>")
+    monkeypatch.setattr(m.requests, "get", lambda requested, **kw: SimpleNamespace(
+        text=f'<a href="{url}">{title}</a>' if requested.endswith('all-job-offers') else page,
+        raise_for_status=lambda: None))
+    job, = m._socgen_jobs()
+    assert job.location == "Casablanca, Région de Casablanca-Settat, Morocco"
+
+
+def test_existing_and_source_cached_locations_are_cleaned_without_mutating_cache(tmp_path, monkeypatch):
+    job = m.Opportunity("Quantitative Researcher Internship", "Marex",
+                        "- Marex Careers Career opportunities Quantitative Researcher Internship Paris, FR , Front Office",
+                        "Stage", "https://www.marex.com/careers/career-opportunities/quantitative-researcher-internship",
+                        "2026-11-01", 100)
+    path = tmp_path / "internships.json"
+    path.write_text(json.dumps({"version": 3, "updated": datetime.now(timezone.utc).isoformat(),
+                               "jobs": [m.asdict(job)]}), encoding="utf-8")
+    original = path.read_bytes()
+    monkeypatch.setattr(m, "CACHE_PATH", path)
+    assert m._read_cache()[1][0].location == "Paris, FR"
+    assert m._deduplicate_opportunities([job])[0].location == "Paris, FR"
+    assert path.read_bytes() == original
