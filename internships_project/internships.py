@@ -34,6 +34,7 @@ SMARTRECRUITERS = {
     "Financeactive": "Finance Active",
 }
 GREENHOUSE = {
+    "akunacapital": "Akuna Capital",
     "point72": "Point72",
     "janestreet": "Jane Street",
     "imc": "IMC Trading",
@@ -248,7 +249,7 @@ SOURCE_CONNECTOR_VERSIONS = {
     "BNP Paribas Graduate": 5,
     "ODDO BHF": 2, "La Banque Postale": 2,
     **{name: 6 for name in WORKDAY},
-    **{name: 3 for name in GREENHOUSE.values()},
+    **{name: 4 for name in GREENHOUSE.values()},
     **{name: 2 for name in LEVER.values()},
     **{name: 3 for name in ORACLE_CAREER_BOARDS},
     "BBVA": 6,
@@ -1005,6 +1006,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "www.dnca-investments.com", "jobs.ubs.com", "www.optiver.com",
         "jobs.candriam.com", "eofe.fa.us2.oraclecloud.com",
         "jobs.commerzbank.com", "jobs.standardchartered.com", "apply.careers.hsbc.com",
+        "www.akunacapital.com", "akunacapital.com",
         *(board[0] for board in WORKDAY.values()),
     }
     try:
@@ -1066,17 +1068,38 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
     url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
     response = requests.get(url, params={"content": "true"}, timeout=(8, 20))
     response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
+        raise ValueError("Catalogue public Greenhouse invalide")
+
+    def calendar_date(value: object) -> str:
+        try:
+            return date.fromisoformat(str(value or "")[:10]).isoformat()
+        except ValueError:
+            return ""
+
+    today = datetime.now(timezone.utc).date().isoformat()
     jobs: list[Opportunity] = []
-    for item in response.json().get("jobs", []):
+    for item in payload["jobs"]:
+        if not isinstance(item, dict):
+            raise ValueError("Annonce publique Greenhouse invalide")
+        # first_published is a posting date; updated_at is only a modification.
+        published = calendar_date(item.get("first_published"))
+        if published > today:
+            published = ""
+        deadline = calendar_date(item.get("application_deadline"))
+        if deadline and deadline < today:
+            continue
+        description = _plain_text(html.unescape(str(item.get("content") or "")))
         job = _opportunity(
             str(item.get("title") or ""), company,
-            str((item.get("location") or {}).get("name") or ""), "",
-            str(item.get("absolute_url") or ""), "",
-            _start_period(str(item.get("content") or "")) or _title_period(str(item.get("title") or "")),
-            role_context=_plain_text(str(item.get("content") or "")),
+            str((item.get("location") or {}).get("name") or "").strip(), "",
+            str(item.get("absolute_url") or ""), published,
+            _start_period(description) or _title_period(str(item.get("title") or "")),
+            role_context=description,
         )
         if job:
-            job = replace(job, description=_plain_text(str(item.get("content") or ""))[:12_000])
+            job = replace(job, description=description[:12_000], deadline=deadline)
             jobs.append(replace(job, source=f"Site carrière · Greenhouse · {company}"))
     return jobs
 
