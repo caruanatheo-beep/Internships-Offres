@@ -65,7 +65,7 @@ def public_source_catalog() -> list[dict]:
 def validate_source_catalog(data: dict) -> None:
     if set(data) != {'updated','sources','request_endpoint'} or not isinstance(data['updated'],str) or not isinstance(data['sources'],list):
         raise ValueError('Invalid public source catalog')
-    if data['request_endpoint'] not in ('','https://marketdesk-source-suggestions.theo-caruana.chatgpt.site/suggestions'):
+    if data['request_endpoint'] not in ('','https://marketdesk-source-suggestions.source-suggestions.workers.dev/suggestions'):
         raise ValueError('Invalid source request endpoint')
     for source in data['sources']:
         if set(source) != {'name','category','url','feeds','logo'}:

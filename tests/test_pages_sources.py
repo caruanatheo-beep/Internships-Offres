@@ -1,9 +1,9 @@
-"""Anonymous source suggestions: browser checks with a simulated mail receiver."""
+"""Anonymous source suggestions: browser checks with a simulated storage receiver."""
 import pytest
 from playwright.sync_api import expect
 from tests.test_pages_filters import browser, ROOT, BASE
 
-ENDPOINT = 'https://marketdesk-source-suggestions.theo-caruana.chatgpt.site/suggestions'
+ENDPOINT = 'https://marketdesk-source-suggestions.source-suggestions.workers.dev/suggestions'
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def sources_screen(browser):
         elif name in {'index.html', 'site.css', 'app.js', 'sources.js', 'marketdesk-icon.svg'}:
             body = (ROOT / name).read_text(encoding='utf-8')
             if name == 'index.html':
-                body = body.replace("connect-src 'self';", "connect-src 'self' https://marketdesk-source-suggestions.theo-caruana.chatgpt.site;")
+                body = body.replace("connect-src 'self';", "connect-src 'self' https://marketdesk-source-suggestions.source-suggestions.workers.dev;")
             mime = {'html': 'text/html', 'css': 'text/css', 'js': 'application/javascript', 'svg': 'image/svg+xml'}
             request.fulfill(body=body, content_type=mime[name.rsplit('.', 1)[1]])
         else:

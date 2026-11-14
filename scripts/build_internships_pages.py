@@ -106,7 +106,7 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
                 version = hashlib.sha256(assets[asset].read_bytes()).hexdigest()[:12]
                 document = document.replace(f'"{asset}"', f'"{asset}?v={version}"')
             if endpoint:
-                document = document.replace("connect-src 'self';", "connect-src 'self' https://marketdesk-source-suggestions.theo-caruana.chatgpt.site;")
+                document = document.replace("connect-src 'self';", "connect-src 'self' https://marketdesk-source-suggestions.source-suggestions.workers.dev;")
             assert_public(document.encode(), "index.html")
             target.write_text(document, encoding="utf-8")
         else:

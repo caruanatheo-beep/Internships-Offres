@@ -76,13 +76,13 @@ def test_build_rejects_recipient_addresses_or_invalid_form_config(tmp_path,snaps
 
 
 def test_public_form_uses_only_receiver_url_and_explicit_csp_allowlist(tmp_path,snapshot,monkeypatch):
-    endpoint='https://marketdesk-source-suggestions.theo-caruana.chatgpt.site/suggestions'
+    endpoint='https://marketdesk-source-suggestions.source-suggestions.workers.dev/suggestions'
     monkeypatch.setenv('SOURCE_REQUEST_ENDPOINT',endpoint)
     builder.build_site(tmp_path/'site')
     catalog=json.loads((tmp_path/'site/sources.json').read_bytes())
     assert catalog['request_endpoint']==endpoint
     page=(tmp_path/'site/index.html').read_text(encoding='utf-8')
-    assert "connect-src 'self' https://marketdesk-source-suggestions.theo-caruana.chatgpt.site;" in page
+    assert "connect-src 'self' https://marketdesk-source-suggestions.source-suggestions.workers.dev;" in page
     assert "form-action 'none'" in page
 
 
@@ -170,4 +170,3 @@ def test_frontend_has_no_external_services_or_unsafe_html():
     html = Path("deploy/github-pages/site/index.html").read_text(encoding="utf-8")
     assert "Content-Security-Policy" in html and "default-src 'none'" in html
     assert "unsafe-inline" not in html and "unsafe-eval" not in html
-

@@ -105,23 +105,25 @@ Les portails d’une même entreprise sont regroupés ; le catalogue n’annonce
 pas de disponibilité en temps réel et ne publie aucun diagnostic privé.
 
 Le formulaire est activé par la variable publique `SOURCE_REQUEST_ENDPOINT`,
-limitée au récepteur Sites prévu. Le récepteur stocke les suggestions dans D1,
+limitée à `https://marketdesk-source-suggestions.source-suggestions.workers.dev/suggestions`.
+Le récepteur Cloudflare stocke les suggestions dans D1,
 hors du dépôt Git, avec des limites atomiques de 3 dépôts par IP et par jour,
 50 dépôts par jour au total et un dédoublonnage. Seule une empreinte HMAC de
 l’IP est conservée, avec une clé privée et une rotation journalière. Les liens
 reçus ne sont jamais ouverts par le récepteur. Les propositions apparaissent
 publiquement dans Sources : entreprise, lien et commentaire uniquement.
-Les états d’envoi et empreintes réseau restent privés. Le formulaire l’annonce
+Les empreintes réseau restent privées. Le formulaire l’annonce
 avant l’envoi et refuse les adresses email dans le texte.
 `POST /archive`, protégé par le même secret, retire les propositions intégrées.
-Les archives sont purgées après 30 jours lors d’une relève.
+Les archives de plus de 30 jours sont purgées lors du prochain archivage authentifié.
 
 Les suggestions ne déclenchent aucun email. Elles sont consultables dans Sources
 après enregistrement par le récepteur public. Les alertes des nouvelles offres
 continuent séparément avec le SMTP GitHub existant.
 
-Le récepteur n'est pas encore déployé : `SOURCE_REQUEST_ENDPOINT` reste vide et
-le formulaire est désactivé tant qu'une écriture réelle n'a pas été validée.
+Le récepteur est déployé séparément avec `deploy/source-suggestions/wrangler.jsonc`.
+Le formulaire reste désactivé si `SOURCE_REQUEST_ENDPOINT` est vide ; cette variable
+publique ne doit être renseignée qu'après validation d'une écriture réelle.
 Aucun Google Form n'est utilisé. Le site GitHub Pages est statique : le fichier
 des offres est écrit par GitHub Actions, et la saisie des visiteurs nécessite
 un récepteur distant pour devenir visible aux autres visiteurs.

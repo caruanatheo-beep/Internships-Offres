@@ -17,11 +17,18 @@ def test_catalog_exactly_covers_active_collectors_and_groups_related_portals():
     assert next(source for source in catalog if source['name']=='Candriam')['category']=='Gestion d’actifs'
 
 
-@pytest.mark.parametrize('endpoint',['https://evil.invalid/suggestions','https://user@example.com/suggestions',None])
+@pytest.mark.parametrize('endpoint',['https://evil.invalid/suggestions','https://user@example.com/suggestions',None,
+    'https://marketdesk-source-suggestions.source-suggestions.workers.dev.evil.invalid/suggestions'])
 def test_catalog_rejects_unknown_receivers_and_email_addresses(endpoint):
     source={**public_source_catalog()[0],'logo':''}
     with pytest.raises(ValueError):
         validate_source_catalog({'updated':'2026-11-14','sources':[source],'request_endpoint':endpoint})
+
+
+def test_catalog_accepts_only_deployed_receiver():
+    source={**public_source_catalog()[0],'logo':''}
+    validate_source_catalog({'updated':'2026-11-14','sources':[source],
+        'request_endpoint':'https://marketdesk-source-suggestions.source-suggestions.workers.dev/suggestions'})
 
 
 def test_catalog_rejects_extra_private_fields_and_unsafe_links():

@@ -3,7 +3,7 @@
   const byId = id => document.getElementById(id);
   const form = byId("source-request-form"), fields = byId("source-request-fields");
   const status = byId("source-request-status"), submit = byId("source-submit");
-  const endpointPattern = /^https:\/\/marketdesk-source-suggestions\.theo-caruana\.chatgpt\.site\/suggestions$/;
+  const endpointPattern = /^https:\/\/marketdesk-source-suggestions\.source-suggestions\.workers\.dev\/suggestions$/;
   let catalog = [], category = "", endpoint = "", loaded = false, loading = false, sending = false;
   async function loadSuggestions() {
     if (!endpoint) return;
