@@ -257,7 +257,7 @@ SOURCE_CONNECTOR_VERSIONS = {
     "JobTeaser · sitemap": 2,
     "HSBC Continental Europe": 3,
     "CFM": 2,
-    "Santander CIB": 7,
+    "Santander CIB": 8,
 }
 JOBTEASER_INDEX = "https://assets-cf.jobteaser.com/sitemaps/sitemap.xml"
 JOBTEASER_EMPLOYERS = {
