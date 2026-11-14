@@ -66,3 +66,40 @@ def test_start_is_not_the_publication_or_application_date(text, expected):
 def test_lisbon_explicit_in_jobteaser_title_is_a_location():
     job = teaser('bnp-paribas-france-v-i-e-capital-market-p-l-specialist-lisbonne-h-f')
     assert job.location == 'Lisbonne'
+
+
+@pytest.mark.parametrize('displayed,expected', [
+    ('21 oct. 2026', '2026-10-21'),
+    ('31 Oct 2026', '2026-10-31'),
+    ('5 nov. 2026', '2026-11-05'),
+    ('29 févr. 2024', '2024-02-29'),
+    ('31 févr. 2026', ''),
+    ('21 inconnu 2026', ''),
+    ('21 jui 2026', ''),
+    ('21 oct. 9999', ''),
+])
+def test_hsbc_visible_publication_is_distinct_from_start_and_deadline(displayed, expected, monkeypatch):
+    monkeypatch.setattr(m, '_refresh_first_seen', {})
+    page = ('<h1>Stage Assistant Trader Cash (f/m/d)</h1>'
+            '<span>Lieu:</span><span>PARIS, 75, FR, 75116</span>'
+            '<span>Closing Date:</span><span>30 nov. 2026</span>'
+            f'<span class="joblayouttoken-label">Date:&nbsp;</span><span>{displayed}</span>'
+            '<p>Le stage est à pourvoir pour janvier 2027.</p>')
+    job = m._career_detail('https://apply.careers.hsbc.com/job/cash/1/',
+                           'HSBC Continental Europe', html_override=page)
+    assert job.published == expected
+    assert not job.published_inferred
+    assert job.start_period == 'janvier 2027'
+    if expected:
+        previous = m.replace(job, published='2026-11-14', published_inferred=True)
+        dated = m._date_detected_offer(job, previous, m.date(2026, 11, 14))
+        assert dated.published == expected and not dated.published_inferred
+
+
+def test_hsbc_without_publication_does_not_use_start_or_closing_date():
+    job = m._career_detail('https://apply.careers.hsbc.com/job/cash/1/',
+                           'HSBC Continental Europe', html_override=(
+        '<h1>Stage Assistant Trader Cash</h1><span>Lieu:</span><span>Paris</span>'
+        '<span>Closing Date:</span><span>21 oct. 2026</span>'
+        '<span>Date de début:</span><span>janvier 2027</span>'))
+    assert job.published == ''

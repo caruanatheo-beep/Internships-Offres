@@ -249,6 +249,7 @@ SOURCE_CONNECTOR_VERSIONS = {
     "ING": 6,
     "Optiver": 3,
     "JobTeaser · sitemap": 2,
+    "HSBC Continental Europe": 2,
 }
 JOBTEASER_INDEX = "https://assets-cf.jobteaser.com/sitemaps/sitemap.xml"
 JOBTEASER_EMPLOYERS = {
@@ -1401,6 +1402,13 @@ def _structured_job_start(posting: dict) -> str:
 
 def _career_publication_date(raw: str) -> str:
     """Keep a career offer usable when its displayed publication date is invalid."""
+    named = re.fullmatch(r"(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,})\.?\s+(\d{4})", raw.strip())
+    if named:
+        months = {number for name, number in _MONTH_ALIASES.items()
+                  if name.startswith(named[2].casefold())}
+        if len(months) != 1:
+            return ""
+        raw = f"{named[1]}/{months.pop()}/{named[3]}"
     try:
         value = datetime.strptime(raw.replace(".", "/"), "%d/%m/%Y").date()
         return value.isoformat() if value <= datetime.now(timezone.utc).date() else ""
@@ -1483,6 +1491,12 @@ def _career_detail(url: str, company: str, fallback_title: str = "",
         return None
     location = ""
     published = _jsonld_job_posted(page_html)
+    if portal_company == "HSBC Continental Europe" and not published:
+        # HSBC exposes the publication in a separate visible Date field, not JSON-LD.
+        for index, part in enumerate(page.parts[:-1]):
+            if part == "Date:":
+                published = _career_publication_date(page.parts[index + 1])
+                break
     employment = str(structured.get("employmentType") or "")
     if portal_company == "Candriam":
         contract = re.search(r"\b(?:Contract type|Type de contrat)\s*[:|]*\s*(Internship|Stage|VIE|Graduate|Permanent|Temporary|Alternance)\b", offer_text, re.I)
