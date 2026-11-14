@@ -19,6 +19,7 @@ from internships_project import internships as jobs
     'Stage Contrôleur de gestion Market Data F H',
     'Stage Contoleur De Gestion Market Data F H',
     'Stage Analyste reporting financier junior H/F',
+    'Junior Operations Analyst',
 ])
 def test_out_of_scope_titles_cannot_borrow_market_context(title):
     assert not jobs._market_relevant_with_context(title, 'Work with sales, trading and global markets teams.')

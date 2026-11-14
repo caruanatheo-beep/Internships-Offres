@@ -204,7 +204,7 @@ _NON_MARKET_ROLE = re.compile(
     r"reconciliation|rapprochement|issuers? servicing|securities (?:lending|financing) officer|"
     r"fund (?:controller|execution officer)|gestionnaire.{0,30}fixed income|"
     r"juriste|juridique|legal counsel|audit|controls? governance|expressions? of interest|talent pool|"
-    r"(?:markets?|clearing|treasury|branch) operations|gestionnaire.{0,30}operations|"
+    r"(?:markets?|clearing|treasury|branch) operations|operations (?:analyst|intern|trainee|associate)|gestionnaire.{0,30}operations|"
     r"consumer financial services|retail banking|branch.{0,30}(?:trainee|banker)|"
     r"financial reporting|reporting financier|cont[r]?ole(?:ur)? de gestion|actifs (?:non cotes|prives)|dette privee|"
     r"immobilier\w*|real estate|property management)\b", re.IGNORECASE,
