@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="referrer" content="no-referrer">
-  <meta name="description" content="Offres de stages, VIE et graduate en finance de marché, banques et gestion d’actifs.">
-  <title>Offres · Marchés financiers</title>
+  <meta name="description" content="Stages, VIE, graduate et postes junior en finance de marché, réunis pour les étudiants du MSc Financial Markets &amp; Investments de SKEMA.">
+  <title>MarketDesk · SKEMA FMI</title>
   <link rel="icon" type="image/svg+xml" sizes="any" href="marketdesk-icon.svg">
   <link rel="stylesheet" href="site.css">
   <script src="app.js" defer></script>
@@ -20,10 +20,10 @@
       <a href="#offres" id="nav-offers" aria-current="page"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="14" rx="3"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12a24 24 0 0 0 18 0M12 11v3"/></svg>Offres</a>
       <a href="#sources" id="nav-sources"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>Sources</a>
     </nav>
-    <span class="masthead-note">Finance de marché <span class="access-note">Accès libre</span></span>
+    <span class="masthead-note">Étudiants SKEMA · FMI <span class="access-note">Accès libre</span></span>
   </header>
   <section id="offers-view" aria-label="Offres">
-  <section class="intro"><div><p class="eyebrow">STAGES · VIE · GRADUATE · JUNIOR</p><h1>Trouve ton prochain poste</h1><p>Les offres en finance de marché, réunies au même endroit.</p></div></section>
+  <section class="intro"><div><p class="eyebrow">STAGES · VIE · GRADUATE · JUNIOR</p><h1>Les offres pour la promo FMI</h1><p>Un espace commun pour trouver notre stage ou notre premier poste en finance de marché.</p></div></section>
   <section class="filters" aria-label="Rechercher des offres">
     <div class="search-row"><svg class="icon search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><label class="sr-only" for="search">Métier, entreprise ou ville</label><input id="search" type="search" placeholder="Rechercher un poste, une entreprise ou une ville…" autocomplete="off"></div>
     <div class="filter-grid">
@@ -43,7 +43,7 @@
   <nav class="pagination" aria-label="Pages des offres"><button id="previous" type="button">← Précédent</button><span id="page"></span><button id="next" type="button">Suivant →</button></nav>
   </section>
   <section id="sources-view" aria-label="Sources" hidden>
-    <div class="intro sources-intro"><div><p class="eyebrow">NOS SOURCES</p><h1>Les sites carrière</h1><p>Les sites où nous trouvons les offres. Tu en connais un autre ? Propose-le.</p></div><a class="secondary-action" href="#proposer-source" id="suggest-source">Proposer un site <span aria-hidden="true">+</span></a></div>
+    <div class="intro sources-intro"><div><p class="eyebrow">NOS SOURCES</p><h1>Nos sites carrière</h1><p>Les sites que nous suivons pour la promo. Tu en connais un autre ? Partage-le avec les étudiants du FMI.</p></div><a class="secondary-action" href="#proposer-source" id="suggest-source">Proposer un site <span aria-hidden="true">+</span></a></div>
     <div class="sources-layout">
       <div class="source-directory">
         <div class="filters source-tools"><div class="search-row"><svg class="icon search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><label class="sr-only" for="source-search">Rechercher une source</label><input id="source-search" type="search" placeholder="Rechercher une banque, une société de gestion…" autocomplete="off"></div>
@@ -55,7 +55,7 @@
         <div id="source-list" class="source-list" aria-label="Catalogue des sources"></div>
       </div>
       <aside class="source-request" id="proposer-source" aria-labelledby="source-request-title">
-        <span class="request-mark" aria-hidden="true">+</span><h2 id="source-request-title">Un site à nous conseiller ?</h2><p>Partage le lien et les offres qui t’intéressent. Ta suggestion apparaîtra sur cette page.</p>
+        <span class="request-mark" aria-hidden="true">+</span><h2 id="source-request-title">Un bon plan pour la promo ?</h2><p>Partage un site carrière et les offres qui pourraient nous intéresser. Ta suggestion sera visible ici.</p>
         <form id="source-request-form">
           <fieldset id="source-request-fields" disabled>
             <label for="source-name">Entreprise ou organisme<input id="source-name" name="company" type="text" required minlength="2" maxlength="80" placeholder="Ex. Berenberg" autocomplete="organization"></label>
