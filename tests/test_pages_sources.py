@@ -26,8 +26,10 @@ def sources_screen(browser):
         if name == 'sources.json':
             request.fulfill(json={'request_endpoint': ENDPOINT if state['enabled'] else '', 'sources': [
                 dict(name='BNP Paribas', category='Banques & services titres', url='https://example.com/bnp', logo='',
+                     added_on=state.get('bnp_added', ''),
                      feeds=[dict(name='BNP France', url='https://example.com/fr'), dict(name='BNP Monde', url='https://example.com/global')]),
                 dict(name='Candriam', category='Gestion d’actifs', url='https://example.com/candriam', logo='',
+                     added_on=state.get('candriam_added', ''),
                      feeds=[dict(name='Candriam', url='https://example.com/candriam')])]})
         elif name == 'offers.json':
             request.fulfill(json={'offers': [], 'sources': {}, 'updated': ''})
@@ -164,3 +166,45 @@ def test_announcement_works_without_browser_storage_on_mobile(sources_screen):
     page.locator('#nav-offers').click()
     expect(page.locator('#offers-view')).to_be_visible()
     assert not calls
+
+
+@pytest.mark.parametrize('now,recent', [
+    ('2026-11-14T12:00:00Z', True),
+    ('2026-11-15T22:30:00Z', True),
+    ('2026-11-15T23:30:00Z', False),  # Monday in Paris, still Sunday in UTC.
+])
+def test_weekly_additions_use_paris_week_and_keep_filters(sources_screen, now, recent):
+    page, calls, state = sources_screen
+    state['candriam_added'] = '2026-11-12'
+    page.add_init_script('''{
+      const OriginalDate = Date;
+      window.Date = class extends OriginalDate {
+        constructor(...args) { super(...(args.length ? args : ["'''+now+'''"])); }
+      };
+    }''')
+    page.reload(wait_until='networkidle')
+    cards = page.locator('#source-list .source-card')
+    assert cards.count() == 2
+    assert page.locator('.is-new-source').count() == int(recent)
+    assert cards.first.locator('h3').inner_text() == ('Candriam' if recent else 'BNP Paribas')
+    assert page.locator('.source-group-title').count() == (2 if recent else 0)
+    if recent:
+        expect(page.locator('.source-group-title').first).to_contain_text('Ajoutées cette semaine')
+        assert cards.first.bounding_box()['height'] == cards.last.bounding_box()['height']
+    page.locator('#source-search').fill('bnp')
+    assert cards.count() == 1 and page.locator('.source-group-title').count() == 0
+    assert not calls
+
+
+@pytest.mark.parametrize('added', ['2026-11-16', '2026-02-30', 'invalid', ''])
+def test_future_invalid_or_unknown_addition_is_not_new(sources_screen, added):
+    page, _, state = sources_screen
+    state['candriam_added'] = added
+    page.add_init_script('''{
+      const OriginalDate = Date;
+      window.Date = class extends OriginalDate {
+        constructor(...args) { super(...(args.length ? args : ["2026-11-14T12:00:00Z"])); }
+      };
+    }''')
+    page.reload(wait_until='networkidle')
+    assert page.locator('.is-new-source').count() == 0

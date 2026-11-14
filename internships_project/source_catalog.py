@@ -1,5 +1,6 @@
 """Public inventory generated from the same registry as the collectors."""
 import re
+from datetime import date
 
 from . import internships as jobs
 from .public_safety import public_job_url
@@ -36,6 +37,18 @@ ASSET_MANAGERS = {
 TRADING = {'Jane Street','IMC Trading','Flow Traders','Da Vinci','Optiver','Statkraft','Marex','Kepler Cheuvreux'}
 OTHER = {'Finance Active','Banque de France','Business France','JobTeaser','AXA','Euronext'}
 
+# First live addition, not the collection date. Record new sources here;
+# leave the older baseline undated rather than inventing historical dates.
+SOURCE_ADDED_ON = {
+    'Candriam': '2026-11-12',
+    'BNY': '2026-11-12',
+    'Commerzbank': '2026-11-12',
+    'Standard Chartered': '2026-11-12',
+    'Citi': '2026-11-14',
+    'NatWest Markets': '2026-11-14',
+    'Pictet Asset Management': '2026-11-14',
+}
+
 
 def public_source_catalog() -> list[dict]:
     urls = dict(jobs.CAREER_PORTALS)
@@ -56,7 +69,8 @@ def public_source_catalog() -> list[dict]:
             category=('Gestion d’actifs' if group in ASSET_MANAGERS else
                       'Courtage & trading' if group in TRADING else
                       'Autres sources' if group in OTHER else 'Banques & services titres')
-            groups[group]={'name':group,'category':category,'url':url,'feeds':[]}
+            groups[group]={'name':group,'category':category,'url':url,'feeds':[],
+                           'added_on':SOURCE_ADDED_ON.get(group, '')}
         groups[group]['feeds'].append({'name':name,'url':url})
         if name==group:
             groups[group]['url']=url
@@ -69,8 +83,12 @@ def validate_source_catalog(data: dict) -> None:
     if data['request_endpoint'] not in ('','https://marketdesk-source-suggestions.source-suggestions.workers.dev/suggestions'):
         raise ValueError('Invalid source request endpoint')
     for source in data['sources']:
-        if set(source) != {'name','category','url','feeds','logo'}:
+        if set(source) - {'added_on'} != {'name','category','url','feeds','logo'}:
             raise ValueError('Unexpected source catalog field')
+        added = source.get('added_on', '')
+        if not isinstance(added, str) or added and (not re.fullmatch(r'\d{4}-\d{2}-\d{2}', added)
+                                                   or date.fromisoformat(added).isoformat() != added):
+            raise ValueError('Invalid source addition date')
         if any(not isinstance(source[key],str) or len(source[key])>500 for key in ('name','category','url','logo')):
             raise ValueError('Invalid source catalog value')
         public_job_url(source['url'])

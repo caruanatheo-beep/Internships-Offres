@@ -36,3 +36,18 @@ def test_catalog_rejects_extra_private_fields_and_unsafe_links():
     for patch in ({'password':'private'},{'url':'http://localhost/'},{'logo':'logos/../../private.png'}):
         with pytest.raises(ValueError):
             validate_source_catalog({'updated':'2026-11-14','sources':[{**source,**patch}],'request_endpoint':''})
+
+
+def test_source_addition_dates_are_persistent_and_unknown_baseline_stays_undated():
+    first = {s['name']:s['added_on'] for s in public_source_catalog()}
+    assert first == {s['name']:s['added_on'] for s in public_source_catalog()}
+    assert first['Citi'] == first['Pictet Asset Management'] == first['NatWest Markets'] == '2026-11-14'
+    assert first['Candriam'] == first['BNY'] == '2026-11-12'
+    assert first['BNP Paribas'] == ''
+
+
+@pytest.mark.parametrize('added', ['2026-02-30', '14/11/2026', None, 20261114])
+def test_catalog_rejects_invalid_addition_date(added):
+    source = {**public_source_catalog()[0], 'logo':'', 'added_on':added}
+    with pytest.raises(ValueError):
+        validate_source_catalog({'updated':'2026-11-14','sources':[source],'request_endpoint':''})

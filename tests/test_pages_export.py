@@ -55,7 +55,7 @@ def test_export_only_public_fields(tmp_path, snapshot):
     assert catalog['request_endpoint']==''
     assert 'connect-src \'self\';' in page
     assert len(catalog['sources'])>40
-    assert all(set(source)=={'name','category','url','feeds','logo'} for source in catalog['sources'])
+    assert all(set(source)=={'name','category','url','feeds','logo','added_on'} for source in catalog['sources'])
 
 
 def test_public_source_counts_distinguish_partial_and_cached(tmp_path,snapshot,monkeypatch):

@@ -36,12 +36,30 @@
       byId("proposed-status").textContent = "Les propositions ne peuvent pas être chargées pour le moment.";
     }
   }
+  function addedThisWeek(value, now = new Date()) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
+    const parts = new Intl.DateTimeFormat("en-CA", {timeZone:"Europe/Paris", year:"numeric", month:"2-digit", day:"2-digit"}).formatToParts(now);
+    const field = type => parts.find(part => part.type === type).value;
+    const today = Date.UTC(+field("year"), +field("month") - 1, +field("day"));
+    const monday = today - ((new Date(today).getUTCDay() + 6) % 7) * 86400000;
+    const added = Date.parse(value + "T00:00:00Z");
+    return Number.isFinite(added) && new Date(added).toISOString().slice(0, 10) === value && added >= monday && added <= today;
+  }
   function renderSources() {
     const terms = normalize(byId("source-search").value).split(/\s+/).filter(Boolean);
     const selected = catalog.filter(source => (!category || source.category === category)
       && terms.every(term => normalize(source.name + " " + source.category + " " + source.feeds.map(feed => feed.name).join(" ")).includes(term)));
+    const recent = selected.filter(source => addedThisWeek(source.added_on))
+      .sort((a,b) => b.added_on.localeCompare(a.added_on) || a.name.localeCompare(b.name, "fr"));
+    const others = selected.filter(source => !addedThisWeek(source.added_on));
     const fragment = document.createDocumentFragment();
-    for (const source of selected) {
+    for (const source of [...recent, ...others]) {
+      if (recent.length && (source === recent[0] || source === others[0])) {
+        const heading = document.createElement("h3"); heading.className = "source-group-title";
+        heading.textContent = source === recent[0] ? "Ajoutées cette semaine" : "Autres sources";
+        const count = document.createElement("span"); count.textContent = String(source === recent[0] ? recent.length : others.length);
+        heading.append(count); fragment.append(heading);
+      }
       const url = safeLink(source.url); if (!url) continue;
       const card = byId("source-template").content.firstElementChild.cloneNode(true);
       card.querySelector("h3").textContent = source.name;
@@ -49,6 +67,10 @@
       card.querySelector(".source-type").textContent = source.category;
       const link = card.querySelector(".source-link"); link.href = url;
       link.setAttribute("aria-label", "Consulter le site carrière : " + source.name);
+      if (addedThisWeek(source.added_on)) {
+        card.classList.add("is-new-source");
+        link.setAttribute("aria-label", link.getAttribute("aria-label") + ", ajoutée cette semaine");
+      }
       const initials = card.querySelector(".initials"), image = card.querySelector("img");
       initials.textContent = source.name.split(/\s+/).slice(0, 2).map(word => word[0] || "").join("").toUpperCase();
       image.hidden = true;
