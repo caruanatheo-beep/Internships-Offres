@@ -39,7 +39,7 @@ def screen(browser):
         name=request.request.url.removeprefix(BASE).split('?')[0] or 'index.html'
         if name=='offers.json':
             request.fulfill(body=json.dumps(data),content_type='application/json')
-        elif name in {'index.html','site.css','app.js','marketdesk-icon.svg'}:
+        elif name in {'index.html','site.css','app.js','sources.js','marketdesk-icon.svg'}:
             mime={'html':'text/html','css':'text/css','js':'application/javascript','svg':'image/svg+xml'}
             request.fulfill(body=(ROOT/name).read_bytes(),content_type=mime[name.rsplit('.',1)[1]])
         else:
@@ -94,7 +94,7 @@ def test_only_one_menu_and_outside_click_closes_it(screen):
     page.locator('#category-trigger').click()
     assert page.locator('[role="listbox"]:visible').count()==1
     assert page.locator('#family-trigger').get_attribute('aria-expanded')=='false'
-    page.locator('h1').click()
+    page.locator('#offers-view h1').click()
     assert page.locator('[role="listbox"]:visible').count()==0
 
 

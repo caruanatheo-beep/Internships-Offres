@@ -3509,9 +3509,8 @@ def _publish_refresh_progress(completed_jobs: list[Opportunity], errors: list[st
 
 
 
-def _fetch_opportunities_progressive() -> tuple[list[Opportunity], list[str]]:
-    """Publish the first results immediately, then batch progress writes once a second."""
-    global _source_counts, _source_checks
+def _opportunity_source_tasks() -> list[tuple[str, object, tuple]]:
+    """Share the configured collectors with the public source inventory."""
     tasks: list[tuple[str, object, tuple]] = []
     for slug, company in SMARTRECRUITERS.items():
         tasks.append((company, _smart_jobs, (slug, company)))
@@ -3557,6 +3556,13 @@ def _fetch_opportunities_progressive() -> tuple[list[Opportunity], list[str]]:
     tasks.extend((name, _oracle_jobs, (name, board)) for name, board in ORACLE_CAREER_BOARDS.items())
     tasks.extend((company, _career_page_jobs, (company, config))
                  for company, config in CAREER_LISTINGS.items())
+    return tasks
+
+
+def _fetch_opportunities_progressive() -> tuple[list[Opportunity], list[str]]:
+    """Publish the first results immediately, then batch progress writes once a second."""
+    global _source_counts, _source_checks
+    tasks = _opportunity_source_tasks()
 
     with _lock:
         checks = {name: dict(check) for name, check in _source_checks.items()}

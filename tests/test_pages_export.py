@@ -45,9 +45,34 @@ def test_export_only_public_fields(tmp_path, snapshot):
     assert data["offers"][0]["location"] == "Paris · France"
     assert data["offers"][0]["location_source"] == "Paris"
     assert data["sources"]["unavailable"] == 1
-    assert {p.name for p in output.iterdir()} == {"index.html", "site.css", "app.js", "marketdesk-icon.svg", "offers.json", ".nojekyll"}
+    assert {p.name for p in output.iterdir()} >= {"index.html", "site.css", "app.js", "sources.js", "marketdesk-icon.svg", "offers.json", "sources.json", ".nojekyll"}
+    assert {p.name for p in output.iterdir()} <= {"index.html", "site.css", "app.js", "sources.js", "marketdesk-icon.svg", "offers.json", "sources.json", "logos", ".nojekyll"}
     page = (output / "index.html").read_text(encoding="utf-8")
-    assert 'site.css?v=' in page and 'app.js?v=' in page
+    assert 'site.css?v=' in page and 'app.js?v=' in page and 'sources.js?v=' in page
+    catalog=json.loads((output/'sources.json').read_bytes())
+    assert catalog['request_endpoint']==''
+    assert 'connect-src \'self\';' in page
+    assert len(catalog['sources'])>40
+    assert all(set(source)=={'name','category','url','feeds','logo'} for source in catalog['sources'])
+
+
+@pytest.mark.parametrize('form_id',['person@example.com','https://evil.invalid/suggestions','short'])
+def test_build_rejects_recipient_addresses_or_invalid_form_config(tmp_path,snapshot,monkeypatch,form_id):
+    monkeypatch.setenv('SOURCE_REQUEST_ENDPOINT',form_id)
+    with pytest.raises(ValueError,match='source request endpoint'):
+        builder.build_site(tmp_path/'site')
+    assert not (tmp_path/'site').exists()
+
+
+def test_public_form_uses_only_receiver_url_and_explicit_csp_allowlist(tmp_path,snapshot,monkeypatch):
+    endpoint='https://marketdesk-source-suggestions.theo-caruana.chatgpt.site/suggestions'
+    monkeypatch.setenv('SOURCE_REQUEST_ENDPOINT',endpoint)
+    builder.build_site(tmp_path/'site')
+    catalog=json.loads((tmp_path/'site/sources.json').read_bytes())
+    assert catalog['request_endpoint']==endpoint
+    page=(tmp_path/'site/index.html').read_text(encoding='utf-8')
+    assert "connect-src 'self' https://marketdesk-source-suggestions.theo-caruana.chatgpt.site;" in page
+    assert "form-action 'none'" in page
 
 
 def test_empty_or_contaminated_build_is_refused(tmp_path, monkeypatch):

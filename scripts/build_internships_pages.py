@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import hashlib
+import os
+import re
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -13,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from internships_project import internships as jobs
 from internships_project.public_safety import assert_public, public_job_url, validate_snapshot
+from internships_project.source_catalog import public_source_catalog, validate_source_catalog
 
 
 def build_site(output: Path, *, collect: bool = False, force: bool = False) -> int:
@@ -40,13 +43,15 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
     categories = ("Stages Paris", "Stages International", "VIE", "Graduate")
     records = []
     logos = {}
-    for job in jobs.matching_opportunities(offers):
-        host = jobs.COMPANY_ICON_HOSTS.get(jobs._canonical_company(job.company), "")
+    def company_logo(company: str) -> str:
+        host = jobs.COMPANY_ICON_HOSTS.get(jobs._canonical_company(company), "")
         logo = jobs.COMPANY_LOGO_DIR / f"{host}.png"
         icon = ""
         if host and logo.is_file() and not logo.is_symlink() and logo.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
             icon = f"logos/{logo.name}"
             logos[icon] = logo
+        return icon
+    for job in jobs.matching_opportunities(offers):
         # No description, profile, tracking, raw error, token or account data.
         records.append({
             "title": jobs._display_offer_title(job.title), "company": job.company,
@@ -54,7 +59,7 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
             "url": public_job_url(job.url), "published": job.published,
             "date_label": ("Détectée le " if job.published_inferred else "Publiée le ") + jobs._display_offer_date(job.published),
             "start": jobs._display_offer_date(job.start_period), "start_month": jobs.start_month(job.start_period) or "",
-            "family": job.family, "logo": icon,
+            "family": job.family, "logo": company_logo(job.company),
             "categories": [category for category in categories if jobs.matching_opportunities([job], category)],
         })
     checks = jobs.source_checks()
@@ -72,7 +77,15 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
                           "offers": records}, ensure_ascii=False, separators=(",", ":")).encode()
     assert_public(payload, "offers.json")
     validate_snapshot(json.loads(payload))
-    assets = {name: ROOT / "deploy/github-pages/site" / name for name in ("index.html", "site.css", "app.js", "marketdesk-icon.svg")}
+    endpoint = os.getenv("SOURCE_REQUEST_ENDPOINT", "").strip()
+    catalog = {"updated": updated.isoformat(), "sources": public_source_catalog(),
+               "request_endpoint": endpoint}
+    for source in catalog["sources"]:
+        source["logo"] = company_logo(source["name"])
+    validate_source_catalog(catalog)
+    sources_payload = json.dumps(catalog, ensure_ascii=False, separators=(",", ":")).encode()
+    assert_public(sources_payload, "sources.json")
+    assets = {name: ROOT / "deploy/github-pages/site" / name for name in ("index.html", "site.css", "app.js", "sources.js", "marketdesk-icon.svg")}
     assets.update(logos)
     # Validate every byte before creating the publish directory.
     for name, path in assets.items():
@@ -85,14 +98,17 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
         target.parent.mkdir(parents=True, exist_ok=True)
         if name == "index.html":
             document = path.read_text(encoding="utf-8")
-            for asset in ("site.css", "app.js"):
+            for asset in ("site.css", "app.js", "sources.js"):
                 version = hashlib.sha256(assets[asset].read_bytes()).hexdigest()[:12]
                 document = document.replace(f'"{asset}"', f'"{asset}?v={version}"')
+            if endpoint:
+                document = document.replace("connect-src 'self';", "connect-src 'self' https://marketdesk-source-suggestions.theo-caruana.chatgpt.site;")
             assert_public(document.encode(), "index.html")
             target.write_text(document, encoding="utf-8")
         else:
             shutil.copyfile(path, target)
     (output / "offers.json").write_bytes(payload)
+    (output / "sources.json").write_bytes(sources_payload)
     (output / ".nojekyll").touch()
     return len(records)
 

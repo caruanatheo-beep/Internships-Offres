@@ -98,6 +98,37 @@ public. Vérifier périodiquement l'onglet Actions et réactiver le workflow au 
 Les caches GitHub peuvent être évincés ; `public_seed.json` constitue une base
 initiale publique, pas une garantie de fraîcheur. La date affichée fait foi.
 
+## Catalogue des sources et suggestions
+
+L’onglet Sources est construit à partir du registre des collecteurs actifs.
+Les portails d’une même entreprise sont regroupés ; le catalogue n’annonce
+pas de disponibilité en temps réel et ne publie aucun diagnostic privé.
+
+Le formulaire est activé par la variable publique `SOURCE_REQUEST_ENDPOINT`,
+limitée au récepteur Sites prévu. Le récepteur stocke les suggestions dans D1,
+hors du dépôt Git, avec des limites atomiques de 3 dépôts par IP et par jour,
+50 dépôts par jour au total et un dédoublonnage. Seule une empreinte HMAC de
+l’IP est conservée, avec une clé privée et une rotation journalière. Les liens
+reçus ne sont jamais ouverts par le récepteur. Les propositions apparaissent
+publiquement dans Sources : entreprise, lien et commentaire uniquement.
+Les états d’envoi et empreintes réseau restent privés. Le formulaire l’annonce
+avant l’envoi et refuse les adresses email dans le texte.
+`POST /archive`, protégé par le même secret, retire les propositions intégrées.
+Les archives sont purgées après 30 jours lors d’une relève.
+
+Le workflow `Deliver source suggestions` relève la boîte toutes les heures
+(avec les délais possibles de GitHub), indépendamment des collectes d’offres,
+et reste lançable manuellement. Il réutilise les sept secrets SMTP existants
+de l’environnement `email-alerts`. `SOURCE_SUGGESTIONS_TOKEN`, secret du même
+environnement et du récepteur, protège la relève et l’accusé de traitement.
+La variable `SOURCE_SUGGESTIONS_ENABLED=true` active le workflow.
+
+L’interface confirme l’enregistrement, pas l’arrivée du mail. En cas d’échec
+SMTP, le lot reste disponible après expiration du bail de dix minutes.
+Une coupure entre l’acceptation SMTP et l’accusé peut produire un doublon :
+l’envoi SMTP et l’écriture de l’accusé ne forment pas une transaction commune.
+Le récepteur ne reçoit aucun identifiant SMTP ni aucune clé IA.
+
 ## Développement
 
 `python scripts/build_internships_pages.py --collect --output _site`
