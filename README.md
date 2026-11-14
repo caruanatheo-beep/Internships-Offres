@@ -1,6 +1,10 @@
 # MarketDesk — offres publiques
 
 Site statique consacré aux stages, VIE et programmes graduate en finance de marché.
+Les lieux affichés sont normalisés en français, sans confondre Paris et ses
+communes voisines ni supprimer les lieux multiples. Le libellé public d'origine
+reste dans `location_source` pour la recherche et les identifiants des alertes ;
+les lieux contradictoires ne sont pas corrigés par supposition.
 Commerzbank est collecté via son catalogue public paginé, Standard Chartered via
 son sitemap et ses fiches publiques. Les dates de début et de publication restent
 distinctes ; les annonces expirées sont écartées avant publication.

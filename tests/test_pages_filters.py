@@ -143,3 +143,13 @@ def test_popup_hover_does_not_scroll_page(screen):
     before=page.evaluate('window.scrollY')
     page.locator('#family-menu').get_by_role('option',name='Sales',exact=True).hover()
     assert page.evaluate('window.scrollY')==before
+
+
+def test_location_search_accepts_normalized_and_original_city_names(screen):
+    page,data=screen
+    data['offers'][0].update(location='Londres · Royaume-Uni',location_source='London, GBR')
+    page.evaluate('load()')
+    for query in ['London','Londres','Royaume-Uni']:
+        page.locator('#search').fill(query)
+        assert page.locator('.card h3').inner_text()=='Assistant Sales'
+        assert page.locator('.location').inner_text()=='Londres · Royaume-Uni'

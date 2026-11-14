@@ -42,6 +42,8 @@ def test_export_only_public_fields(tmp_path, snapshot):
     assert data["offers"][0]["title"] == "Analyste Sales"
     assert data["offers"][0]["categories"] == ["Stages Paris"]
     assert data["offers"][0]["start_month"] == "2027-04"
+    assert data["offers"][0]["location"] == "Paris · France"
+    assert data["offers"][0]["location_source"] == "Paris"
     assert data["sources"]["unavailable"] == 1
     assert {p.name for p in output.iterdir()} == {"index.html", "site.css", "app.js", "marketdesk-icon.svg", "offers.json", ".nojekyll"}
     page = (output / "index.html").read_text(encoding="utf-8")

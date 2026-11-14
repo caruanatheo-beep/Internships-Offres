@@ -55,7 +55,7 @@ def validate_snapshot(data: dict) -> None:
     if any(type(value) is not int or value < 0 for value in data["sources"].values()):
         raise ValueError("Publication refused: invalid diagnostic count")
     for record in data["offers"]:
-        if set(record) not in (PUBLIC_FIELDS, PUBLIC_FIELDS | {"discovered_at"}):
+        if set(record) - {"discovered_at", "location_source"} != PUBLIC_FIELDS:
             raise ValueError("Publication refused: unexpected offer fields")
         for name in set(record) - {"categories"}:
             if not isinstance(record[name], str) or len(record[name]) > 2000:

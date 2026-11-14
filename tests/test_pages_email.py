@@ -73,6 +73,19 @@ def test_same_offer_from_another_source_or_paris_suburb_is_not_new():
     send.assert_not_called()
 
 
+def test_location_display_change_does_not_send_existing_foreign_offer_again():
+    original=snapshot('Sales Rates')
+    original['offers'][0].update(location='London, GBR',categories=['Stages International'])
+    ledger=FakeLedger()
+    alerts.notify(original,ledger,send=Mock())
+    normalized=deepcopy(original)
+    normalized['offers'][0].update(location='Londres · Royaume-Uni',location_source='London, GBR')
+    send=Mock()
+    assert alerts.notify(normalized,ledger,send=send)==0
+    send.assert_not_called()
+    assert alerts.public_offers(normalized).keys()==alerts.public_offers(original).keys()
+
+
 def test_sitemap_only_jobteaser_links_do_not_trigger_unverified_alerts():
     data = snapshot("Sales Rates")
     data["offers"][0]["url"] = "https://www.jobteaser.com/fr/job-offers/example"

@@ -29,7 +29,8 @@ def public_offers(snapshot: dict) -> dict[str, object]:
     offers = []
     for record in snapshot["offers"]:
         source = "JobTeaser · sitemap" if urlsplit(record["url"]).hostname in {"www.jobteaser.com", "jobteaser.com"} else "Site employeur"
-        offers.append(SimpleNamespace(**{**record, "start_period": record["start"], "source": source,
+        offers.append(SimpleNamespace(**{**record, "location": record.get("location_source", record["location"]),
+                                        "start_period": record["start"], "source": source,
                                         "published_inferred": record["date_label"].startswith("Détectée")}))
     return {hashlib.sha256(key.encode()).hexdigest(): job
             for key, job in email_alerts._eligible_offers(offers).items()}

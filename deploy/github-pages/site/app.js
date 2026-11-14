@@ -98,7 +98,7 @@ function render() {
   const today = new Intl.DateTimeFormat("en-CA", {timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date());
   const week = new Date(today + "T12:00:00Z"); week.setUTCDate(week.getUTCDate() - 6);
   const first = week.toISOString().slice(0,10);
-  let selected = offers.filter((j) => terms.every((t) => normalize(j.title + " " + j.company + " " + j.location).includes(t))
+  let selected = offers.filter((j) => terms.every((t) => normalize(j.title + " " + j.company + " " + j.location + " " + (j.location_source || "")).includes(t))
     && (!$("category").value || j.categories.includes($("category").value))
     && (!$("family").value || j.family === $("family").value)
     && (!$("start").value || j.start_month && j.start_month >= $("start").value)

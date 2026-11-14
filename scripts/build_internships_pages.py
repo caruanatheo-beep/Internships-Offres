@@ -26,7 +26,7 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
             previous = json.loads(seed_bytes)
             validate_snapshot(previous)
             baseline = [jobs.Opportunity(
-                title=j["title"], company=j["company"], location=j["location"], kind=j["kind"],
+                title=j["title"], company=j["company"], location=j.get("location_source", j["location"]), kind=j["kind"],
                 url=public_job_url(j["url"]), published=j["published"], score=max(0, 1000-i),
                 start_period=j["start"], family=j["family"],
                 published_inferred=j["date_label"].startswith("Détectée"),
@@ -50,7 +50,7 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
         # No description, profile, tracking, raw error, token or account data.
         records.append({
             "title": jobs._display_offer_title(job.title), "company": job.company,
-            "location": job.location or "Non précisé", "kind": job.kind,
+            "location": jobs._display_offer_location(job.location), "location_source": job.location or "Non précisé", "kind": job.kind,
             "url": public_job_url(job.url), "published": job.published,
             "date_label": ("Détectée le " if job.published_inferred else "Publiée le ") + jobs._display_offer_date(job.published),
             "start": jobs._display_offer_date(job.start_period), "start_month": jobs.start_month(job.start_period) or "",

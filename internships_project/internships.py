@@ -704,7 +704,7 @@ def _is_international_location(location: str) -> bool:
             or any(_offer_search_text(region) in region_text for region in french_regions)):
         return False
     return any(hub in text for hub in HUBS if hub != "paris") or bool(
-        re.search(r",\s*[a-z][a-z .'-]{1,40}$", text)
+        re.search(r"[,·]\s*[a-z][a-z .'-]{1,40}$", text)
     )
 
 
@@ -3897,6 +3897,131 @@ def _utc_display_stamp(value: datetime) -> str:
     return value.astimezone(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
 
 
+_LOCATION_COUNTRIES = {
+    "France": "FR|FRA|France", "Royaume-Uni": "GB|GBR|UK|United Kingdom|Great Britain|Royaume Uni|England|Scotland",
+    "États-Unis": "US|USA|United States|United States of America|Etats Unis",
+    "Allemagne": "DE|DEU|Germany|Deutschland|Allemagne", "Suisse": "CH|CHE|Switzerland|Suisse|Schweiz",
+    "Pays-Bas": "NL|NLD|Netherlands|Pays Bas|Nederland", "Italie": "IT|ITA|Italy|Italia|Italie",
+    "Espagne": "ES|ESP|Spain|Espana|Espagne", "Portugal": "PT|PRT|Portugal",
+    "Luxembourg": "LU|LUX|Luxembourg", "Singapour": "SG|SGP|Singapore|Singapour",
+    "Hong Kong": "HK|HKG|Hong Kong", "Chine": "CN|CHN|China|Chine",
+    "Japon": "JP|JPN|Japan|Japon", "Corée du Sud": "KR|KOR|South Korea|Coree du Sud",
+    "Émirats arabes unis": "AE|ARE|UAE|United Arab Emirates|Emirats arabes unis",
+    "Australie": "AU|AUS|Australia|Australie", "Irlande": "IE|IRL|Ireland|Irlande",
+    "Danemark": "DK|DNK|Denmark|Danemark", "Hongrie": "HU|HUN|Hungary|Hongrie",
+    "Pologne": "PL|POL|Poland|Pologne", "Maroc": "MA|MAR|Morocco|Maroc",
+    "Monaco": "MC|MCO|Monaco", "Chili": "CL|CHL|Chile|Chili",
+    "Brésil": "BR|BRA|Brazil|Brasil|Bresil", "Mexique": "MX|MEX|Mexico|Mexique",
+    "Thaïlande": "TH|THA|Thailand|Thailande", "Inde": "IN|IND|India|Inde",
+    "Qatar": "QA|QAT|Qatar", "Taïwan": "TW|TWN|Taiwan",
+    "Canada": "CA|CAN|Canada", "Suède": "SE|SWE|Sweden|Suede",
+    "Belgique": "BE|BEL|Belgium|Belgique",
+}
+_LOCATION_CITIES = {
+    "Paris": ("France", ""), "Montrouge": ("France", ""), "La Défense": ("France", ""),
+    "Courbevoie": ("France", ""), "Puteaux": ("France", ""), "Nanterre": ("France", ""),
+    "Charenton-le-Pont": ("France", ""), "Rueil-Malmaison": ("France", ""),
+    "Levallois-Perret": ("France", ""), "Boulogne-Billancourt": ("France", ""),
+    "Fontenay-sous-Bois": ("France", ""), "Saint-Denis": ("France", ""),
+    "Issy-les-Moulineaux": ("France", ""), "Saint-Quentin-en-Yvelines": ("France", ""),
+    "Saint-Grégoire": ("France", ""), "Lyon": ("France", ""), "Lille": ("France", ""),
+    "Bordeaux": ("France", ""), "Nantes": ("France", ""), "Marseille": ("France", ""),
+    "Londres": ("Royaume-Uni", "London|Canary Wharf"), "Glasgow": ("Royaume-Uni", ""),
+    "Francfort": ("Allemagne", "Frankfurt am Main|Frankfurt"), "Düsseldorf": ("Allemagne", "Dusseldorf"),
+    "Munich": ("Allemagne", "Munchen"), "Berlin": ("Allemagne", ""),
+    "Zurich": ("Suisse", "Zürich"), "Genève": ("Suisse", "Geneva"), "Nyon": ("Suisse", ""),
+    "Amsterdam": ("Pays-Bas", ""), "La Haye": ("Pays-Bas", "The Hague|Den Haag"),
+    "Milan": ("Italie", "Milano"), "Rome": ("Italie", "Roma"), "Assago": ("Italie", ""),
+    "Scandicci": ("Italie", ""), "Madrid": ("Espagne", ""), "Barcelone": ("Espagne", "Barcelona"),
+    "Lisbonne": ("Portugal", "Lisbon|Lisboa"), "Luxembourg": ("Luxembourg", "Lux"),
+    "Dublin": ("Irlande", ""), "Copenhague": ("Danemark", "Copenhagen"), "Aarhus": ("Danemark", ""),
+    "Budapest": ("Hongrie", ""), "Varsovie": ("Pologne", "Warsaw"), "Wrocław": ("Pologne", "Wroclaw"),
+    "Stockholm": ("Suède", ""), "Bruxelles": ("Belgique", "Brussels"),
+    "Singapour": ("Singapour", "Singapore"), "Hong Kong": ("Hong Kong", ""),
+    "Shanghai": ("Chine", ""), "Pékin": ("Chine", "Beijing"), "Tokyo": ("Japon", ""),
+    "Séoul": ("Corée du Sud", "Seoul"), "Taipei": ("Taïwan", ""),
+    "Dubaï": ("Émirats arabes unis", "Dubai"), "Doha": ("Qatar", ""),
+    "Sydney": ("Australie", ""), "Mumbai": ("Inde", "Bombay"), "Casablanca": ("Maroc", ""),
+    "Monaco": ("Monaco", ""), "Santiago": ("Chili", ""), "São Paulo": ("Brésil", "Sao Paulo"),
+    "Mexico": ("Mexique", "Mexico City"), "Toronto": ("Canada", ""), "Montréal": ("Canada", "Montreal"),
+    **{city: ("États-Unis", alias) for city, alias in (
+        ("New York", "New York City|NYC"), ("Chicago", ""), ("Miami", ""), ("Dallas", ""),
+        ("West Palm Beach", ""), ("Salt Lake City", ""), ("Stafford", ""), ("Houston", ""),
+        ("San Francisco", ""), ("Los Angeles", ""), ("Austin", ""), ("Seattle", ""), ("Stamford", ""), ("Boston", ""))},
+}
+_LOCATION_COUNTRY_NAMES = {
+    _offer_search_text(alias): country
+    for country, aliases in _LOCATION_COUNTRIES.items() for alias in aliases.split("|")
+}
+_LOCATION_CITY_PATTERNS = [
+    (re.compile(r"(?<!\w)(?:" + "|".join(re.escape(alias) for alias in sorted(
+        {_offer_search_text(city), *(_offer_search_text(a) for a in aliases.split("|") if a)}, key=len, reverse=True)) + r")(?!\w)"), city, country)
+    for city, (country, aliases) in _LOCATION_CITIES.items()
+]
+
+
+def _display_offer_location(value: str) -> str:
+    """Normalize presentation only; keep raw source places for filtering and deduplication."""
+    value = re.split(r"\b(?:Domaine d.activit[eé]|Business area|Job category|Department)\s*:",
+                     html.unescape(value or ""), maxsplit=1, flags=re.I)[0]
+    value = _plain_text("".join(char for char in value if unicodedata.category(char) != "Co")).strip(" ,|–-")
+    key = _offer_search_text(value)
+    if key in {"", "all", "non precise", "not specified", "unknown", "n a", "multiple locations", "various"}:
+        return "Non précisé"
+    parts = re.split(r"[,;|·()]+|\s+[-–—]\s+", value)
+    countries = {_LOCATION_COUNTRY_NAMES[part] for part in map(_offer_search_text, parts)
+                 if part in _LOCATION_COUNTRY_NAMES}
+    named_countries = set()
+    for alias, country in _LOCATION_COUNTRY_NAMES.items():
+        if len(alias) > 3 and re.search(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", key):
+            countries.add(country)
+            named_countries.add(country)
+    # CA/IN/MA can denote US states rather than countries in employer addresses.
+    if re.search(r"\bunited states\b|\busa\b|\betats unis\b", key):
+        countries -= {_LOCATION_COUNTRY_NAMES[part] for part in map(_offer_search_text, parts)
+                      if part in {"ca", "in", "ma", "va"} and part in _LOCATION_COUNTRY_NAMES
+                      and _LOCATION_COUNTRY_NAMES[part] not in named_countries}
+    code = re.search(r"\b([A-Z]{2,3})$|^([A-Z]{2,3})-", value)
+    if code and (country := _LOCATION_COUNTRY_NAMES.get((code[1] or code[2]).lower())):
+        countries.add(country)
+    matches = sorted((match.start(), city, country) for pattern, city, country in _LOCATION_CITY_PATTERNS
+                     if (match := pattern.search(key)))
+    matches = [item for item in matches if item[1] != "Stafford" or "États-Unis" in countries or re.search(r"\bva\b", key)]
+    if not matches and countries == {"Hong Kong"} and re.match(r"central\b", key):
+        matches = [(0, "Hong Kong", "Hong Kong")]
+    if not re.search(r"/|;|\b(?:or|ou)\b", value, re.I) and any(city == "La Défense" for _, city, _ in matches):
+        matches = [item for item in matches if item[1] not in {"Paris", "Courbevoie", "Puteaux", "Nanterre"}]
+    if matches and all(country == "États-Unis" for _, _, country in matches):
+        for state, country in (("ca", "Canada"), ("in", "Inde"), ("ma", "Maroc")):
+            if state in map(_offer_search_text, parts) and country not in named_countries:
+                countries.discard(country)
+    # Explicit contradictory countries must not be overwritten by a familiar city name.
+    if matches and not countries - {country for _, _, country in matches}:
+        result = []
+        for _, city, country in matches:
+            if city == "Paris":
+                district = re.search(r"\bparis\s+(0?[1-9]|1\d|20)(?:e(?:me)?|er|\s+arrondissement)\b", key)
+                postal = re.search(r"\b750(0[1-9]|1\d|20)\b", key)
+                if district or postal:
+                    number = int((district or postal)[1])
+                    city += f" {number}{'er' if number == 1 else 'e'}"
+            result.append(city if city == country else f"{city} · {country}")
+        return " / ".join(result)
+    if len(countries) == 1:
+        country = next(iter(countries))
+        rest = [part.strip() for part in parts if part.strip() and _offer_search_text(part) not in _LOCATION_COUNTRY_NAMES]
+        if key in {"sgp head office", "sg head office"}:
+            return "Singapour"
+        if key in {"ile de france", "idf"}:
+            return "Île-de-France · France"
+        return f"{', '.join(rest)} · {country}" if rest else country
+    if key in {"ile de france", "idf"}:
+        return "Île-de-France · France"
+    if not matches and re.search(r"\b(?:corp|head office)\b", key):
+        return "Non précisé"
+    return value
+
+
 def _display_offer_date(value: str) -> str:
     """Normalize presentation only; retain the source date's precision and ranges."""
     value = (value or "").strip()
@@ -4028,8 +4153,8 @@ def render_opportunities(jobs: list[Opportunity], errors: list[str], updated: da
             '</span>'
             f'<strong class="job-title" title="{html.escape(job.title, quote=True)}">{html.escape(_display_offer_title(job.title))}</strong>'
             '<span class="job-key-facts">'
-            f'<span><small>Lieu</small><span class="job-location" title="{html.escape(job.location or "Non précisé", quote=True)}">{html.escape(job.location or "Non précisé")}</span></span>'
-            f'<span><small>Début</small><span title="{html.escape(_display_offer_date(job.start_period), quote=True)}">{html.escape(_display_offer_date(job.start_period))}</span></span>'
+            f'<span><small>Lieu</small><span class="job-location">{html.escape(_display_offer_location(job.location))}</span></span>'
+            f'<span><small>Début</small><span>{html.escape(_display_offer_date(job.start_period))}</span></span>'
             '</span>'
         )
         escaped_url = html.escape(job.url, quote=True)
