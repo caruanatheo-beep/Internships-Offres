@@ -4368,13 +4368,14 @@ def _display_offer_title(title: str, location: str = "") -> str:
     duration = r"(?:de\s+|of\s+)?\d{1,2}\s*[-–]?\s*(?:mois|months?)\b"
     label = rf"(?:{contract}(?:\s*[-–—:|]?\s*{duration})?|{duration}\s+{contract})"
     def keep_stage_type(match: re.Match) -> str:
-        return match[0] if re.search(r"\b(?:summer|winter|spring|off[ -]?cycle|seasonal)\b", match[0], re.I) else ""
+        return match[0] if re.search(r"\b(?:intern|internship|summer|winter|spring|off[ -]?cycle|seasonal)\b", match[0], re.I) else ""
     value = re.sub(rf"\(\s*{label}\s*\)", keep_stage_type, value, flags=re.I).strip()
     value = re.sub(rf"^\s*{label}\s*[-–—:|]?\s*", keep_stage_type, value, flags=re.I)
     value = re.sub(rf"\s*[-–—:|]?\s+{label}\s*$", keep_stage_type, value, flags=re.I)
     value = re.sub(r"\b\d{1,2}\s*[-–]?\s*(?:mois|months?)\b", " ", value, flags=re.I)
     value = re.sub(r"\(\s*(?:North America|Americas|EMEA|APAC)\s*[-–—]?\s*\)", " ", value, flags=re.I)
     value = re.sub(r"[\[(]\s*[-–—,:|/]*\s*[\])]", " ", value)
+    value = re.sub(r"([\[(])\s+", r"\1", value)
     value = re.sub(r"\s+([)\]])", r"\1", value)
     value = re.sub(r"\s*[-–—,:|]+\s*([)\]])", r"\1", value)
     value = re.sub(r"\s*[-–—:|](?:\s*[-–—:|])+\s*", " - ", value)
