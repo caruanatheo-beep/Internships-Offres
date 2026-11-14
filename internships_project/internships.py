@@ -4327,13 +4327,26 @@ def _display_offer_date(value: str) -> str:
 
 
 def _display_offer_title(title: str) -> str:
-    """Remove redundant internship labels for display; keep the source title intact."""
+    """Keep the role and desk visible, removing contract and gender boilerplate."""
+    value = html.unescape(title)
+    gender = (r"(?:[fmhw]\s*[/·.\-]\s*[fmhw]\s*[/·.\-]\s*(?:d|x|divers(?:e)?)|"
+              r"[hf]\s*[/·.\-]\s*[hf]|[fmw]\s*[/·.\-]\s*[fmw]|"
+              r"all\s+genders?|all\s+sexes|tous\s+genres)")
+    value = re.sub(rf"[\[(]\s*{gender}\s*[\])]", " ", value, flags=re.I)
+    value = re.sub(rf"\b{gender}\b", " ", value, flags=re.I)
+    while value.rstrip().endswith(')') and value.count(')') > value.count('('):
+        value = value.rstrip()[:-1]
+    value = re.sub(r"\s+([)\]])", r"\1", value)
+    # Public sitemap titles sometimes lose punctuation ("F H", "F M D").
+    value = re.sub(r"(?:^|\s)(?:[FH]\s+[HF]|F\s+M\s+D|M\s+W\s+D)\s*$", "", value)
+    value = re.sub(r"^\s*(?:[FH]\s+[HF]|F\s+M\s+D|M\s+W\s+D)\s*[-–—:|]\s*", "", value)
     contract = r"(?:stage|stagiaire|internship|intern)\b"
     duration = r"(?:de\s+|of\s+)?\d{1,2}\s*[-–]?\s*(?:mois|months?)\b"
     label = rf"(?:{contract}(?:\s*[-–—:|]?\s*{duration})?|{duration}\s+{contract})"
-    value = re.sub(rf"\(\s*{label}\s*\)", "", title, flags=re.I).strip()
+    value = re.sub(rf"\(\s*{label}\s*\)", "", value, flags=re.I).strip()
     value = re.sub(rf"^\s*{label}\s*[-–—:|]?\s*", "", value, flags=re.I)
     value = re.sub(rf"\s*[-–—:|]?\s+{label}\s*$", "", value, flags=re.I)
+    value = re.sub(r"\s*[-–—:|](?:\s*[-–—:|])+\s*", " - ", value)
     return re.sub(r"\s+", " ", value).strip(" -–—:|") or title
 
 

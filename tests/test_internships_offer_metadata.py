@@ -128,7 +128,7 @@ def test_bpce_reads_explicit_start_field_and_retains_description(monkeypatch):
 
 
 @pytest.mark.parametrize("title, expected", [
-    ("Stage - 6 mois - Assistant Sales F/H", "Assistant Sales F/H"),
+    ("Stage - 6 mois - Assistant Sales F/H", "Assistant Sales"),
     ("Stage 6 mois Assistant Sales", "Assistant Sales"),
     ("Internship: Market Risk Management", "Market Risk Management"),
     ("6 month Internship - Fixed Income Credit Sales", "Fixed Income Credit Sales"),
@@ -143,6 +143,36 @@ def test_bpce_reads_explicit_start_field_and_retains_description(monkeypatch):
 ])
 def test_display_title_removes_only_internship_labels(title, expected):
     assert m._display_offer_title(title) == expected
+
+
+@pytest.mark.parametrize('title,expected', [
+    ('Assistant Sales (H/F)', 'Assistant Sales'),
+    ('H/F - Analyste Produits Structurés', 'Analyste Produits Structurés'),
+    ('Stage - 6 mois - Assistant Sales F/H', 'Assistant Sales'),
+    ('Sales (f/m/d)', 'Sales'), ('Sales [m/w/d]', 'Sales'),
+    ('Sales (m/w/divers)', 'Sales'), ('Sales (m/f/diverse)', 'Sales'),
+    ('Sales (m/f/x)', 'Sales'), ('Sales (all genders)', 'Sales'),
+    ('Intern (all genders) - Equity Derivatives', 'Equity Derivatives'),
+    ('Financial Controller Trading H/F H/F', 'Financial Controller Trading'),
+    ('Sales F H', 'Sales'), ('Sales F M D', 'Sales'),
+    ('H F - Sales', 'Sales'), ('Sales - F/H - Paris', 'Sales - Paris'),
+    ('Structuration (QIS) f/m/d)', 'Structuration (QIS)'),
+    ('ETF &amp; Indiciel H/F', 'ETF & Indiciel'),
+    ('OCIO Solutions - Advisory (Gestion Diversifiée) H/F',
+     'OCIO Solutions - Advisory (Gestion Diversifiée)'),
+    ('Sales (FX & Rates)', 'Sales (FX & Rates)'),
+    ('Analyst - Delta One (D1)', 'Analyst - Delta One (D1)'),
+    ('Assistant(e) Sales', 'Assistant(e) Sales'),
+    ('2027 Global Markets Graduate Programme - Paris', '2027 Global Markets Graduate Programme - Paris'),
+    ('FICC Sales', 'FICC Sales'), ('HF Trading Analyst', 'HF Trading Analyst'),
+    ('Quantitative Research (PhD)', 'Quantitative Research (PhD)'),
+    ('Assistant de gestion (Quantitative, Finance, Data F/H) – S1 2027',
+     'Assistant de gestion (Quantitative, Finance, Data) – S1 2027'),
+])
+def test_display_title_removes_gender_not_role_qualifications(title, expected):
+    result = m._display_offer_title(title)
+    assert result == expected
+    assert m._display_offer_title(result) == expected
 
 
 def test_card_keeps_original_title_for_tracking_and_tooltip(monkeypatch):
