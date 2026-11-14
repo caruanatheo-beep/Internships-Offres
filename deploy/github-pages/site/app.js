@@ -49,8 +49,13 @@ function enhanceFilter(select) {
   function open() {
     if (openFilter) openFilter.close();
     menu.hidden = false; trigger.setAttribute("aria-expanded", "true"); field.classList.add("is-open");
-    const box = trigger.getBoundingClientRect();
-    menu.classList.toggle("opens-up", window.innerHeight - box.bottom < menu.getBoundingClientRect().height && box.top > window.innerHeight - box.bottom);
+    menu.style.maxHeight = "";
+    const box = field.getBoundingClientRect(), height = menu.getBoundingClientRect().height;
+    // Keep the 6px menu gap and an 8px viewport margin, including below the announcement.
+    const below = window.innerHeight - box.bottom - 14, above = box.top - 14;
+    const opensUp = below < height && above > below;
+    menu.classList.toggle("opens-up", opensUp);
+    menu.style.maxHeight = Math.max(0, Math.min(height, opensUp ? above : below)) + "px";
     openFilter = api; highlight(select.selectedIndex);
   }
   function refresh() {
