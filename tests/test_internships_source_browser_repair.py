@@ -7,6 +7,25 @@ import pytest
 from internships_project import internships as jobs
 
 
+def test_bnp_catalogue_is_not_truncated_at_40_pages(monkeypatch):
+    from playwright import sync_api
+    root='https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/cdd'
+    offer='https://group.bnpparibas/emploi-carriere/offre-emploi/junior-sales'
+    provider=MagicMock()
+    page=provider.__enter__.return_value.chromium.launch.return_value.new_page.return_value
+    current=[1]
+    def navigate(url,**kwargs):
+        if '?page=' in url:current[0]=int(url.rsplit('=',1)[1])
+        return SimpleNamespace(status=200)
+    page.goto.side_effect=navigate
+    page.content.side_effect=lambda: f'<a href="{offer}">Graduate Global Markets Sales</a>' if current[0]==43 else '<a href="/emploi-carriere/offre-emploi/stage-rh">Stage RH</a>'
+    page.locator.return_value.evaluate_all.side_effect=lambda script: [{'href':root+f'?page={current[0]+1}','label':'Suivant'}] if current[0]<43 else []
+    monkeypatch.setattr(sync_api,'sync_playwright',lambda:provider)
+    monkeypatch.setattr(jobs,'_career_detail',lambda *a,**k:jobs.Opportunity('Graduate Global Markets Sales','BNP Paribas','Paris','Graduate',offer,'',90))
+    assert len(jobs._bnp_group_jobs_browser('BNP Paribas',root))==1
+    assert current[0]==43
+
+
 def test_bnp_disabled_next_link_is_not_a_pagination_failure(monkeypatch):
     from playwright import sync_api
     root='https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/stage'

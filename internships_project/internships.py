@@ -237,7 +237,7 @@ SOURCE_CONNECTOR_VERSIONS = {
     "Société Générale Careers": 5, "BNP Paribas": 7, "BNP Paribas CIB": 4,
     "Amundi": 3, "Crédit Agricole CIB": 2, "Crédit Mutuel Arkéa": 2, "Covéa Finance": 2,
     "DNCA": 2, "BNP Paribas Asset Management": 7, "BNP Paribas VIE": 7,
-    "BNP Paribas Graduate": 3,
+    "BNP Paribas Graduate": 4,
     "ODDO BHF": 2, "La Banque Postale": 2,
     **{name: 6 for name in WORKDAY},
     **{name: 3 for name in GREENHOUSE.values()},
@@ -1653,6 +1653,7 @@ def _bnp_graduate_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]
     """BNP also files desk graduate programmes under fixed-term contracts."""
     found: dict[str, Opportunity] = {}
     failures = 0
+    failure_reasons: list[str] = []
     catalogues = ("graduate-programme-cdi", "cdd", "je-recherche-mon-premier-emploi")
     for contract in catalogues:
         listing = "https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/" + contract
@@ -1661,14 +1662,18 @@ def _bnp_graduate_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]
         except _PartialSourceError as exc:
             result = exc.jobs
             failures += 1
-        except (requests.RequestException, ValueError):
+            failure_reasons.append(f"{contract}: {exc}")
+        except (requests.RequestException, ValueError) as exc:
             failures += 1
+            failure_reasons.append(f"{contract}: {type(exc).__name__}")
             continue
         found.update((job.url, job) for job in result if job.kind == "Graduate")
     if failures == len(catalogues) and not found:
         raise ValueError("catalogues Graduate et Junior BNP indisponibles")
     if failures:
-        raise _PartialSourceError(list(found.values()), [], search_failures=failures)
+        failure = _PartialSourceError(list(found.values()), [], search_failures=failures)
+        failure.args = (str(failure) + "; " + "; ".join(failure_reasons),)
+        raise failure
     return list(found.values())
 
 
@@ -1702,7 +1707,7 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                 visited = {listing_url}
                 # Follow the public pagination links; the AJAX button can be
                 # covered by a consent banner or finish after a fixed wait.
-                for _ in range(40):
+                for _ in range(200):
                     listing_page = _CareerHTML()
                     listing_page.feed(page.content())
                     for href, label in listing_page.links:
@@ -1739,7 +1744,7 @@ def _bnp_group_jobs_browser(company: str, listing_url: str, *, headless: bool = 
                         break
                 else:
                     listing_failures += 1
-                    listing_failure_reason = "limite de 40 pages atteinte"
+                    listing_failure_reason = "limite de 200 pages atteinte"
 
                 detail_company = "BNP Paribas" if company == "BNP Paribas Asset Management" else company
                 jobs: list[Opportunity] = []
