@@ -47,6 +47,8 @@ LEVER = {
 }
 ASHBY = {}
 WORKDAY = {
+    "Citi": ("citi.wd5.myworkdayjobs.com", "citi", "2"),
+    "NatWest Markets": ("rbs.wd3.myworkdayjobs.com", "rbs", "RBS"),
     "BBVA": ("bbva.wd3.myworkdayjobs.com", "bbva", "BBVA"),
     "ING": ("ing.wd3.myworkdayjobs.com", "ing", "ICSGBLCOR"),
     "Deutsche Bank": ("db.wd3.myworkdayjobs.com", "db", "DBWebsite"),
@@ -60,6 +62,7 @@ WORKDAY = {
     "OCBC Global Markets": ("ocbc.wd102.myworkdayjobs.com", "ocbc", "External"),
 }
 CAREER_PORTALS = {
+    "Pictet Asset Management": "https://career5.successfactors.eu/career?company=banquepict",
     "BBVA": "https://bbva.wd3.myworkdayjobs.com/en-US/BBVA",
     "ING": "https://careers.ing.com/en",
     "JobTeaser · recherche publique": "https://www.jobteaser.com/fr/job-offers?locale=fr",
@@ -298,6 +301,9 @@ JOBTEASER_CITIES = {
 # Brand icons are requested from the employer's own site. If an icon is absent,
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
+    "citi": "www.citigroup.com",
+    "natwestmarkets": "www.natwest.com",
+    "pictetassetmanagement": "www.pictet.com",
     "bbva": "www.bbva.com",
     "ing": "www.ing.com",
     "ubs": "www.ubs.com",
@@ -532,7 +538,7 @@ _START = re.compile(
     rf"\b(?:date de d[ée]but(?: (?:du |de )?(?:stage|contrat))?|d[ée]but (?:du |de )stage|"
     rf"date (?:pr[ée]vue de )?prise de (?:poste|fonction)|prise de (?:poste|fonction)|"
     rf"d[ée]marrage(?: du stage)?|[àa] pourvoir|[àa] partir (?:de|du|d['’])|dès|"
-    rf"start(?:ing)? date|starting (?:in|on)|starts (?:in|on)|beginning in|begins in|commence en)"
+    rf"date d['’]entr[ée]e|start(?:ing)? date|starting (?:in|on|from)|starts (?:in|on)|beginning in|begins in|commence en)"
     rf"(?:\s+(?:souhait[ée]e?|pr[ée]vue?|pr[ée]visionnelle?))?\s*[:|\-–]*\s*"
     rf"(?:(?:le|en|au|pour|from|in|dès|[àa] partir (?:de|du)|of|[àa] pr[ée]voir)\s+)?"
     rf"(?P<period>{_PERIOD}|asap|dès que possible|imm[ée]diatement|immediate(?:ly)?)(?!\w)",
@@ -959,6 +965,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "careers.societegenerale.com", "mon-vie-via.businessfrance.fr",
         "group.bnpparibas", "careers.cib.bnpparibas", "bnppapply.tal.net", "jobs.ca-cib.com", "recrutement.creditmutuel.fr",
         "jobs.amundi.com", "www.jobs.amundi.com", "recrutement.arkea.com",
+        "career5.successfactors.eu",
         "www.recrutement.arkea.com",
         "www.marex.com", "keplercheuvreux.teamtailor.com", "catitres.teamtailor.com",
         "recrutement.bpce.fr", "jobs.caceis.com", "tikehau-capital-career.talentview.io", "jobs.cfm.com",
@@ -2852,6 +2859,101 @@ def _workday_publication_date(start_date: object = "", posted_on: object = "",
 _workday_requests = threading.BoundedSemaphore(4)
 
 
+def _pictet_listing() -> list[dict]:
+    """Read the public SuccessFactors search, including its ordinary pagination."""
+    from playwright.sync_api import sync_playwright
+    rows: dict[str, dict] = {}
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(locale="en-GB")
+            response = page.goto(CAREER_PORTALS["Pictet Asset Management"],
+                                 wait_until="networkidle", timeout=60_000)
+            if response is None or response.status >= 400:
+                raise ValueError("Catalogue public Pictet indisponible")
+            page.get_by_role("button", name="Search Jobs", exact=True).click(timeout=20_000)
+            page.wait_for_function("document.querySelector('tr.jobResultItem') || /0 Jobs matched/.test(document.body.innerText)")
+            if not page.locator("tr.jobResultItem").count():
+                return []
+            for _ in range(100):
+                batch = page.locator("tr.jobResultItem").evaluate_all("""rs => rs.map(r => ({
+                    title: r.querySelector('.jobTitle').textContent.trim(),
+                    id: new URL(r.querySelector('.jobTitle').href).searchParams.get('career_job_req_id'),
+                    meta: Array.from(r.querySelectorAll('.jobContentEM')).map(n => n.textContent.trim())
+                }))""")
+                if not batch or any(not re.fullmatch(r"\d+", row.get("id") or "") for row in batch):
+                    raise ValueError("Résultats Pictet invalides")
+                if all(row["id"] in rows for row in batch):
+                    raise ValueError("Pagination Pictet répétée")
+                rows.update((row["id"], row) for row in batch)
+                next_page = page.get_by_role("button", name="Next Page", exact=True)
+                if not next_page.count():
+                    break
+                first_id = batch[0]["id"]
+                next_page.first.click(timeout=10_000)
+                page.wait_for_function("""id => {
+                    const a = document.querySelector('tr.jobResultItem .jobTitle');
+                    return a && new URL(a.href).searchParams.get('career_job_req_id') !== id;
+                }""", arg=first_id, timeout=20_000)
+            else:
+                raise ValueError("Pagination Pictet incomplète")
+        finally:
+            browser.close()
+    return list(rows.values())
+
+
+def _pictet_detail(row: dict) -> Opportunity | None:
+    # Canonical public link: never keep anonymous session/CSRF query parameters.
+    url = (CAREER_PORTALS["Pictet Asset Management"]
+           + "&career_ns=job_listing&career_job_req_id=" + row["id"])
+    response = requests.get(url, timeout=(8, 25))
+    if response.status_code in (404, 410):
+        return None
+    response.raise_for_status()
+    page = _CareerHTML()
+    page.feed(response.content.decode("utf-8"))
+    text = " ".join(page.parts)
+    if "This job cannot be viewed" in text:
+        return None
+    sections = re.split(r"Your team|Votre équipe", text, maxsplit=1)
+    if len(sections) != 2 or not re.search(r"Your role|Votre rôle", text):
+        raise ValueError("Détail Pictet illisible")
+    description = sections[1].split("Diversity & Inclusion", 1)[0].strip()
+    team = re.split(r"Your role|Votre rôle", description, maxsplit=1)[0]
+    # The group board also carries wealth management and fund administration.
+    if not re.search(r"\bPictet (?:Asset Management|AM)\b", team, re.I):
+        return None
+    title = row["title"]
+    employment = ""
+    if re.search(r"\b(?:ce stage|this internship|internship (?:position|agreement)|"
+                 r"stage (?:de|d'une|d’une)|as an intern)\b", description, re.I):
+        employment = "Internship"
+    meta = row["meta"]
+    if len(meta) < 4:
+        raise ValueError("Localisation Pictet absente du catalogue")
+    published = _career_publication_date(meta[1].removeprefix("Posted on "))
+    job = _opportunity(title, "Pictet Asset Management", f"{meta[3]}, {meta[2]}",
+                       employment, url, published, _start_period(description), role_context=description)
+    return replace(job, description=description[:12_000], source="Site carrière · Pictet Asset Management") if job else None
+
+
+def _pictet_jobs() -> list[Opportunity]:
+    rows = _pictet_listing()
+    failed_urls: list[str] = []
+    def load(row: dict) -> Opportunity | None:
+        try:
+            return _pictet_detail(row)
+        except (requests.RequestException, ValueError, TypeError):
+            failed_urls.append(CAREER_PORTALS["Pictet Asset Management"]
+                               + "&career_ns=job_listing&career_job_req_id=" + row["id"])
+            return None
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        jobs = [job for job in pool.map(load, rows) if job and _eligible_offer(job)]
+    if failed_urls:
+        raise _PartialSourceError(jobs, failed_urls)
+    return jobs
+
+
 def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) -> list[Opportunity]:
     if company == "BBVA" and _client is None:
         # Reuse one connection: repeated parallel TLS connections to BBVA time out.
@@ -2894,6 +2996,16 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
     # Title/contract/market filters are applied below, not weakened on the server.
     searches = [({}, "")]
     catalogue = None
+    if company == "Citi":
+        # Citi caps the unfiltered catalogue at 2,000 despite having more jobs.
+        # Scan every family independently; do not rely on internship contract
+        # facets (many graduate and off-cycle roles are marked Regular).
+        catalogue = listing("", 0, {})
+        families = next((facet.get("values", []) for facet in catalogue.get("facets", [])
+                         if facet.get("facetParameter") == "jobFamilyGroup"), [])
+        if not families or any(not value.get("id") for value in families):
+            raise ValueError("Catégories Citi indisponibles")
+        searches = [({"jobFamilyGroup": [value["id"]]}, "") for value in families]
     if company == "BBVA":
         catalogue = listing("", 0, {})
         for facet in catalogue.get("facets", []):
@@ -2921,6 +3033,8 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
             # Workday often reports total=0 after the first page, even when
             # further pages exist. Keep the total from the initial response.
             total = max(total, int(payload.get("total") or 0))
+            if company == "Citi" and total >= 2000:
+                return found, ValueError("Catégorie Citi plafonnée : collecte incomplète")
             signature = tuple(str(item.get("externalPath") or "") for item in rows)
             if rows and signature in seen_pages:
                 return found, ValueError("Pagination Workday répétée")
@@ -2929,8 +3043,11 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 path = str(item.get("externalPath") or "")
                 if not path.startswith("/job/"):
                     continue
+                title = str(item.get("title") or "")
+                if company == "Citi" and re.search(r"\b(?:operations|reference data|product control)\b", title, re.I):
+                    continue  # Operational programmes are not markets desk roles.
                 job = _opportunity(
-                    str(item.get("title") or ""), company, str(item.get("locationsText") or ""),
+                    title, company, str(item.get("locationsText") or ""),
                     contract,
                     f"https://{host}/en-US/{site}{path}",
                     _workday_publication_date(posted_on=item.get("postedOn")),
@@ -2946,7 +3063,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
 
     candidates: dict[str, Opportunity] = {}
     search_errors: list[Exception] = []
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    with ThreadPoolExecutor(max_workers=3 if company == "Citi" else 1) as pool:
         for result, error in pool.map(search, searches):
             candidates.update(result)
             if error:
@@ -2965,13 +3082,23 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
             response.raise_for_status()
             info = response.json().get("jobPostingInfo") or {}
             description = str(info.get("jobDescription") or "")
+            location = str(info.get("location") or job.location)
+            if company == "Citi":
+                # Some Workday locations are building names (e.g. TAURUS).
+                # Use an explicit city in the title only when its country
+                # matches Workday's structured country, never a guessed city.
+                country = str((info.get("country") or {}).get("descriptor") or "")
+                city = re.search(r",\s*([^,–]+?)\s*[–-]\s*" + re.escape(country)
+                                 + r"(?:\s*[,–-]?\s*20\d{2})?\s*$", job.title, re.I) if country else None
+                if city:
+                    location = f"{city[1].strip()}, {country}"
             detail_company = job.company
             if re.search(r"Rothschild\s*&\s*Co\s+Redburn|\bRedburn\b", description, re.IGNORECASE):
                 detail_company = "Rothschild & Co Redburn"
             elif re.search(r"Rothschild\s*&\s*Co\s+(?:Asset|Wealth) Management", description[:1_500], re.IGNORECASE):
                 detail_company = "Rothschild & Co Asset Management"
             if _junior_analyst(job.title):
-                revised = _opportunity(job.title, detail_company, str(info.get("location") or job.location),
+                revised = _opportunity(job.title, detail_company, location,
                     job.employment or "", job.url,
                     _workday_publication_date(info.get("startDate"), info.get("postedOn")) or job.published,
                     _start_period(description) or _title_period(job.title), role_context=_plain_text(description))
@@ -2981,7 +3108,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 job,
                 company=detail_company,
                 start_period=_start_period(description) or _title_period(job.title),
-                location=str(info.get("location") or job.location),
+                location=location,
                 published=_workday_publication_date(info.get("startDate"), info.get("postedOn")) or job.published,
                 description=_plain_text(description)[:12_000],
                 source=f"Workday career site · {detail_company}",
@@ -3605,6 +3732,7 @@ def _opportunity_source_tasks() -> list[tuple[str, object, tuple]]:
     tasks.extend([
         ("Optiver", _optiver_jobs, ("", "")),
         ("UBS", _ubs_jobs, ("", "")),
+        ("Pictet Asset Management", _pictet_jobs, ()),
         ("Soci\u00e9t\u00e9 G\u00e9n\u00e9rale Careers", _socgen_jobs, ("", "")),
         ("Business France VIE", _vie_jobs, ("", "")),
         ("Cr\u00e9dit Agricole CIB", _ca_cib_jobs, ("", "")),

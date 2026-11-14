@@ -28,6 +28,7 @@ EXTRA_URLS = {
     'AXA':"https://recrutement.axa.fr/recherche-d%27offres",
 }
 ASSET_MANAGERS = {
+    'Pictet Asset Management',
     'Sienna Investment Managers','Sycomore Asset Management','Point72','Qube Research & Technologies',
     '21shares','WisdomTree','Amundi','Covéa Finance','Comgest','DNCA','Candriam','Groupama AM',
     'Schroders','La Française','Ofi Invest','Tikehau Capital','CFM',
