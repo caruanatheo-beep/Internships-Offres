@@ -54,7 +54,7 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
     for job in jobs.matching_opportunities(offers):
         # No description, profile, tracking, raw error, token or account data.
         records.append({
-            "title": jobs._display_offer_title(job.title), "company": job.company,
+            "title": jobs._display_offer_title(job.title, job.location), "company": job.company,
             "location": jobs._display_offer_location(job.location), "location_source": job.location or "Non précisé", "kind": job.kind,
             "url": public_job_url(job.url), "published": job.published,
             "date_label": ("Détectée le " if job.published_inferred else "Publiée le ") + jobs._display_offer_date(job.published),

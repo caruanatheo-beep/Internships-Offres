@@ -163,16 +163,46 @@ def test_display_title_removes_only_internship_labels(title, expected):
     ('Sales (FX & Rates)', 'Sales (FX & Rates)'),
     ('Analyst - Delta One (D1)', 'Analyst - Delta One (D1)'),
     ('Assistant(e) Sales', 'Assistant(e) Sales'),
-    ('2027 Global Markets Graduate Programme - Paris', '2027 Global Markets Graduate Programme - Paris'),
+    ('2027 Global Markets Graduate Programme - Paris', 'Global Markets Graduate Programme - Paris'),
     ('FICC Sales', 'FICC Sales'), ('HF Trading Analyst', 'HF Trading Analyst'),
     ('Quantitative Research (PhD)', 'Quantitative Research (PhD)'),
     ('Assistant de gestion (Quantitative, Finance, Data F/H) – S1 2027',
-     'Assistant de gestion (Quantitative, Finance, Data) – S1 2027'),
+     'Assistant de gestion (Quantitative, Finance, Data)'),
 ])
 def test_display_title_removes_gender_not_role_qualifications(title, expected):
     result = m._display_offer_title(title)
     assert result == expected
     assert m._display_offer_title(result) == expected
+
+
+@pytest.mark.parametrize('title,location,expected', [
+    ('2027 Credit Portfolio Management Summer Intern – Miami', 'Miami, United States', 'Credit Portfolio Management Summer Intern'),
+    ('2027 Credit Portfolio Management Summer Intern – New York', 'New York, NY', 'Credit Portfolio Management Summer Intern'),
+    ('Global Market, FX Sales Desk – January 2027', 'Paris', 'Global Market, FX Sales Desk'),
+    ('Fixed Income Credit Sales: Jan - June 2027', 'Paris', 'Fixed Income Credit Sales'),
+    ('Assistant Trading (Janvier 2027)', 'Paris', 'Assistant Trading'),
+    ('Sales Activation - 6 months (July – December 2027)', 'Singapore', 'Sales Activation'),
+    ('Global Markets, Corporate Sales & Structuring [Jan - Jun 2027]', 'Singapore',
+     'Global Markets, Corporate Sales & Structuring'),
+    ('Sales (FX & Rates) - London - 2027', 'Londres, Royaume-Uni', 'Sales (FX & Rates)'),
+    ('Quantitative Trading Internship (Singapore) - 2027', 'Singapore', 'Quantitative Trading'),
+    ('Markets – Sales and Trading, Off-Cycle Internship, Paris – France, 2027', 'Paris, France',
+     'Markets – Sales and Trading, Off-Cycle Internship'),
+    ('Sales - London', '', 'Sales - London'),
+    ('Sales - London', 'New York', 'Sales - London'),
+    ('London Stock Exchange Sales Intern', 'London', 'London Stock Exchange Sales'),
+    ('EMEA Sales (PhD) - Paris', 'Paris', 'EMEA Sales (PhD)'),
+    ('Delta One Structuring (D1)', 'Paris', 'Delta One Structuring (D1)'),
+    ('Graduate Equity Analyst (2027 Start - Chicago)', 'Chicago', 'Graduate Equity Analyst'),
+    ('Quantitative Trading Internship (Summer 2027 - Shanghai)', 'Shanghai', 'Quantitative Trading Internship (Summer)'),
+    ('Summer 2027 Quantitative Research', 'Paris', 'Summer Quantitative Research'),
+    ('Off-Cycle Internship - Sales - Paris 2027', 'Paris', 'Off-Cycle Internship - Sales'),
+    ('Seasonal Internship - Quant - London', 'London', 'Seasonal Internship - Quant'),
+])
+def test_display_title_removes_documented_location_and_calendar_metadata(title, location, expected):
+    result = m._display_offer_title(title, location)
+    assert result == expected
+    assert m._display_offer_title(result, location) == expected
 
 
 def test_card_keeps_original_title_for_tracking_and_tooltip(monkeypatch):

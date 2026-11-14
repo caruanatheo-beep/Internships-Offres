@@ -4326,7 +4326,7 @@ def _display_offer_date(value: str) -> str:
                   lambda match: _MONTH_NAMES[_MONTH_ALIASES[match[0].casefold()] - 1], value, flags=re.I)
 
 
-def _display_offer_title(title: str) -> str:
+def _display_offer_title(title: str, location: str = "") -> str:
     """Keep the role and desk visible, removing contract and gender boilerplate."""
     value = html.unescape(title)
     gender = (r"(?:[fmhw]\s*[/·.\-]\s*[fmhw]\s*[/·.\-]\s*(?:d|x|divers(?:e)?)|"
@@ -4340,14 +4340,45 @@ def _display_offer_title(title: str) -> str:
     # Public sitemap titles sometimes lose punctuation ("F H", "F M D").
     value = re.sub(r"(?:^|\s)(?:[FH]\s+[HF]|F\s+M\s+D|M\s+W\s+D)\s*$", "", value)
     value = re.sub(r"^\s*(?:[FH]\s+[HF]|F\s+M\s+D|M\s+W\s+D)\s*[-–—:|]\s*", "", value)
-    contract = r"(?:stage|stagiaire|internship|intern)\b"
+    # Strip explicit calendar metadata before internship labels, so a trailing
+    # city/year cannot hide "Summer Intern" from the existing cleanup.
+    month = rf"(?:{_MONTH}|jan|feb|fév|fev|mar|apr|avr|jun|jul|aug|sep|sept|oct|nov|dec|déc)\.?"
+    value = re.sub(r"\b(summer|winter|spring|autumn|fall|été|hiver|printemps)\s+20\d{2}\b",
+                   r"\1", value, flags=re.I)
+    period = (rf"(?:\d{{1,2}}(?:st|nd|rd|th|er)?\s+)?{month}"
+              rf"(?:\s+20\d{{2}})?\s*(?:[-–—/]|to|à|au)\s*{month}\s+20\d{{2}}|"
+              rf"(?:\d{{1,2}}(?:st|nd|rd|th|er)?\s+)?{month}\s+20\d{{2}}|"
+              r"(?:summer|winter|spring|autumn|fall|été|hiver|printemps|S[12]|H[12]|Q[1-4])\s+20\d{2}")
+    value = re.sub(rf"\b(?:{period})\b", " ", value, flags=re.I)
+    value = re.sub(r"\b20\d{2}\s+Start\b", " ", value, flags=re.I)
+    value = re.sub(r"\b20\d{2}\b", " ", value)
+    if location and _display_offer_location(location) != "Non précisé":
+        place = _offer_search_text(_display_offer_location(location))
+        aliases = []
+        for city, (country, variants) in _LOCATION_CITIES.items():
+            if re.search(r"(?<!\w)" + re.escape(_offer_search_text(city)) + r"(?!\w)", place):
+                aliases.extend([city, *(a for a in variants.split('|') if a)])
+                aliases.extend(a for a in _LOCATION_COUNTRIES.get(country, '').split('|') if len(a) > 3)
+        for alias in sorted(set(aliases), key=len, reverse=True):
+            value = re.sub(r"(?<!\w)" + re.escape(alias) + r"(?!\w)(?!\s+(?:Stock Exchange|Stock Market))",
+                           " ", value, flags=re.I)
+    value = re.sub(r"[\[(]\s*[-–—,:|/]*\s*[\])]", " ", value)
+    value = re.sub(r"\s+", " ", value).strip(" -–—:|,")
+    contract = r"(?:(?:summer|winter|spring|off[ -]?cycle|seasonal|long)\s+)?(?:stage|stagiaire|internship|intern)\b"
     duration = r"(?:de\s+|of\s+)?\d{1,2}\s*[-–]?\s*(?:mois|months?)\b"
     label = rf"(?:{contract}(?:\s*[-–—:|]?\s*{duration})?|{duration}\s+{contract})"
-    value = re.sub(rf"\(\s*{label}\s*\)", "", value, flags=re.I).strip()
-    value = re.sub(rf"^\s*{label}\s*[-–—:|]?\s*", "", value, flags=re.I)
-    value = re.sub(rf"\s*[-–—:|]?\s+{label}\s*$", "", value, flags=re.I)
+    def keep_stage_type(match: re.Match) -> str:
+        return match[0] if re.search(r"\b(?:summer|winter|spring|off[ -]?cycle|seasonal)\b", match[0], re.I) else ""
+    value = re.sub(rf"\(\s*{label}\s*\)", keep_stage_type, value, flags=re.I).strip()
+    value = re.sub(rf"^\s*{label}\s*[-–—:|]?\s*", keep_stage_type, value, flags=re.I)
+    value = re.sub(rf"\s*[-–—:|]?\s+{label}\s*$", keep_stage_type, value, flags=re.I)
+    value = re.sub(r"\b\d{1,2}\s*[-–]?\s*(?:mois|months?)\b", " ", value, flags=re.I)
+    value = re.sub(r"\(\s*(?:North America|Americas|EMEA|APAC)\s*[-–—]?\s*\)", " ", value, flags=re.I)
+    value = re.sub(r"[\[(]\s*[-–—,:|/]*\s*[\])]", " ", value)
+    value = re.sub(r"\s+([)\]])", r"\1", value)
+    value = re.sub(r"\s*[-–—,:|]+\s*([)\]])", r"\1", value)
     value = re.sub(r"\s*[-–—:|](?:\s*[-–—:|])+\s*", " - ", value)
-    return re.sub(r"\s+", " ", value).strip(" -–—:|") or title
+    return re.sub(r"\s+", " ", value).strip(" -–—:|,") or title
 
 
 def render_opportunities(jobs: list[Opportunity], errors: list[str], updated: datetime,
@@ -4443,7 +4474,7 @@ def render_opportunities(jobs: list[Opportunity], errors: list[str], updated: da
             f'<span class="job-fact kind">{html.escape(job.kind)}</span>'
             '<span class="job-card-open" aria-hidden="true">↗</span>'
             '</span>'
-            f'<strong class="job-title" title="{html.escape(job.title, quote=True)}">{html.escape(_display_offer_title(job.title))}</strong>'
+            f'<strong class="job-title" title="{html.escape(job.title, quote=True)}">{html.escape(_display_offer_title(job.title, job.location))}</strong>'
             '<span class="job-key-facts">'
             f'<span><small>Lieu</small><span class="job-location">{html.escape(_display_offer_location(job.location))}</span></span>'
             f'<span><small>Début</small><span>{html.escape(_display_offer_date(job.start_period))}</span></span>'
