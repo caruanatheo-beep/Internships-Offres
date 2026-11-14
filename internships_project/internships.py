@@ -113,6 +113,8 @@ CAREER_PORTALS = {
     "BNY": "https://eofe.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/BNY-Careers/jobs",
 }
 CAREER_LISTINGS = {
+    "HSBC Continental Europe": ("https://apply.careers.hsbc.com/search/?q=stage&locationsearch=Paris",
+                                 "apply.careers.hsbc.com", "/job/"),
     "La Française": ("https://recrutement.creditmutuel.fr/fr/nos_offres.html?socs=39|4962|1499|1497|4963|4965|5007|5008|1496&tc=3",
                      "recrutement.creditmutuel.fr", "/fr/offre.html"),
     "Crédit Agricole Titres": ("https://catitres.teamtailor.com/jobs",
@@ -246,6 +248,7 @@ SOURCE_CONNECTOR_VERSIONS = {
     "BBVA": 6,
     "ING": 6,
     "Optiver": 3,
+    "JobTeaser · sitemap": 2,
 }
 JOBTEASER_INDEX = "https://assets-cf.jobteaser.com/sitemaps/sitemap.xml"
 JOBTEASER_EMPLOYERS = {
@@ -270,6 +273,7 @@ JOBTEASER_EMPLOYERS = {
     "la-banque-postale": "La Banque Postale",
     "rothschild-and-co": "Rothschild & Co",
     "lazard": "Lazard",
+    "lazard-freres-gestion": "Lazard Frères Gestion",
     "tikehau-capital": "Tikehau Capital",
     "carmignac": "Carmignac",
     "sycomore-asset-management": "Sycomore Asset Management",
@@ -287,6 +291,7 @@ JOBTEASER_CITIES = {
     "singapour": "Singapour", "geneve": "Genève", "geneva": "Geneva",
     "zurich": "Zurich", "amsterdam": "Amsterdam", "milan": "Milan",
     "madrid": "Madrid", "dublin": "Dublin", "luxembourg": "Luxembourg",
+    "lisbonne": "Lisbonne", "lisbon": "Lisbon",
 }
 
 # Brand icons are requested from the employer's own site. If an icon is absent,
@@ -437,7 +442,9 @@ def _cross_source_title(title: str) -> str:
     """Normalize optional internship prefixes for direct-site/JobTeaser matching."""
     text = unicodedata.normalize("NFKD", title.casefold())
     text = "".join(char for char in text if not unicodedata.combining(char))
-    text = re.sub(r"^(?:(?:stage|internship|intern)\b\W*)+", "", text)
+    text = re.sub(r"^(?:(?:stage|stagiaire|internship|intern)\b\W*(?:\d+\s*(?:mois|months?)\b\W*)?)+", "", text)
+    text = re.sub(r"\b(?:[hf]\W+[hf]|f\W+m\W+d|all genders)\b", "", text)
+    text = re.sub(r"\b(?:et|and)\b", "", text)
     return re.sub(r"\W+", "", text)
 
 
@@ -448,7 +455,9 @@ def _jobteaser_duplicate(job: Opportunity, official: list[Opportunity]) -> bool:
     Keep that exception explicit: sharing a corporate group alone is not enough.
     """
     company = _canonical_company(job.company)
-    title = _cross_source_title(job.title)
+    # Older sitemap caches included the employer suffix in the vacancy title.
+    parsed = _jobteaser_from_sitemap_url(job.url)
+    title = _cross_source_title(parsed.title if parsed else job.title)
     for other in official:
         other_company = _canonical_company(other.company)
         affiliate = (company, other_company) == ("natixis", "mirova")
@@ -524,7 +533,7 @@ _START = re.compile(
     rf"d[ée]marrage(?: du stage)?|[àa] pourvoir|[àa] partir (?:de|du|d['’])|dès|"
     rf"start(?:ing)? date|starting (?:in|on)|starts (?:in|on)|beginning in|begins in|commence en)"
     rf"(?:\s+(?:souhait[ée]e?|pr[ée]vue?|pr[ée]visionnelle?))?\s*[:|\-–]*\s*"
-    rf"(?:(?:le|en|au|from|in|dès|[àa] partir (?:de|du)|of|[àa] pr[ée]voir)\s+)?"
+    rf"(?:(?:le|en|au|pour|from|in|dès|[àa] partir (?:de|du)|of|[àa] pr[ée]voir)\s+)?"
     rf"(?P<period>{_PERIOD}|asap|dès que possible|imm[ée]diatement|immediate(?:ly)?)(?!\w)",
     re.IGNORECASE,
 )
@@ -961,7 +970,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "recrutement.axa.fr",
         "www.dnca-investments.com", "jobs.ubs.com", "www.optiver.com",
         "jobs.candriam.com", "eofe.fa.us2.oraclecloud.com",
-        "jobs.commerzbank.com", "jobs.standardchartered.com",
+        "jobs.commerzbank.com", "jobs.standardchartered.com", "apply.careers.hsbc.com",
         *(board[0] for board in WORKDAY.values()),
     }
     try:
@@ -2069,6 +2078,17 @@ def _career_page_jobs(company: str, config: tuple[str, str, str]) -> list[Opport
                 successful_pages += 1
                 page = _CareerHTML()
                 page.feed(html)
+                if company == "HSBC Continental Europe":
+                    total = re.search(r'jobRecordsFound:\s*parseInt\("(\d+)"\)', html)
+                    per_page = re.search(r'jobRecordsPerPage:\s*parseInt\("(\d+)"\)', html)
+                    if not total or not per_page or int(per_page[1]) < 1:
+                        raise ValueError("pagination HSBC non reconnue")
+                    if int(total[1]) > 25 * int(per_page[1]):
+                        raise ValueError("pagination HSBC au-delà de la limite de collecte")
+                    for offset in range(int(per_page[1]), int(total[1]), int(per_page[1])):
+                        candidate = f"{listing}&startrow={offset}"
+                        if candidate not in listings:
+                            listings.append(candidate)
                 if company in {"La Banque Postale", "Amundi · portail groupe"}:
                     # Pagination lives in <nav>, intentionally omitted from offer text.
                     for href in re.findall(r'href=["\']([^"\']+)["\']', html, re.I):
@@ -2748,7 +2768,7 @@ def _jobteaser_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
     cached: list[Opportunity] = []
     try:
         payload = json.loads(JOBTEASER_CACHE_PATH.read_text(encoding="utf-8"))
-        if payload.get("version") == 2:
+        if payload.get("version") == 3:
             cached = [Opportunity(**row) for row in payload.get("jobs", [])]
             if not _force_source_refresh and (now - datetime.fromisoformat(payload["updated"])).total_seconds() < _source_refresh_seconds("JobTeaser · sitemap", None):
                 return [replace(job, family=_family(job.title)) for job in cached]
@@ -2785,7 +2805,7 @@ def _jobteaser_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
         jobs = list({job.url: job for group in groups for job in group}.values())
         JOBTEASER_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
         temporary = JOBTEASER_CACHE_PATH.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"version": 2, "updated": now.isoformat(),
+        temporary.write_text(json.dumps({"version": 3, "updated": now.isoformat(),
                                          "jobs": [asdict(job) for job in jobs]}, ensure_ascii=False), encoding="utf-8")
         temporary.replace(JOBTEASER_CACHE_PATH)
         return jobs

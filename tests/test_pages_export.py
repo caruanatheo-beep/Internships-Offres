@@ -152,7 +152,7 @@ def test_manual_refresh_also_rechecks_jobteaser_sitemap(tmp_path, monkeypatch, o
     from dataclasses import asdict
     import requests
     cached = tmp_path / "jobteaser.json"
-    cached.write_text(json.dumps({"version": 2, "updated": datetime.now(timezone.utc).isoformat(),
+    cached.write_text(json.dumps({"version": 3, "updated": datetime.now(timezone.utc).isoformat(),
                                   "jobs": [asdict(offer)]}), encoding="utf-8")
     monkeypatch.setattr(internships, "JOBTEASER_CACHE_PATH", cached)
     network = Mock(side_effect=requests.RequestException("unavailable"))
