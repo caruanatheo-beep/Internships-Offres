@@ -13,6 +13,8 @@ from scripts import build_internships_pages as builder
 @pytest.fixture(autouse=True)
 def isolated_discovery_history(tmp_path, monkeypatch):
     monkeypatch.setattr(internships, "CACHE_PATH", tmp_path / "cache.json")
+    # Each test chooses its own receiver state, independently of the CI deployment setting.
+    monkeypatch.delenv("SOURCE_REQUEST_ENDPOINT", raising=False)
 
 
 @pytest.fixture
