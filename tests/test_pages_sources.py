@@ -86,6 +86,30 @@ def test_anonymous_submission_success(sources_screen):
     expect(page.locator('#proposed-list h3')).to_have_text('Nouvelle banque')
 
 
+def test_compact_cards_link_directly_and_portals_do_not_move_grid(sources_screen):
+    page, calls, _ = sources_screen
+    card = page.locator('#source-list .source-card').first
+    link = card.locator('.source-link')
+    expect(link).to_have_attribute('href', 'https://example.com/bnp')
+    expect(link).to_have_attribute('target', '_blank')
+    assert 'example.com' not in card.inner_text()
+    before = card.bounding_box()
+    assert before['height'] <= 100
+    assert link.bounding_box()['width'] >= before['width'] - 2
+    summary = card.locator('summary')
+    summary.click()
+    expect(card.locator('details a').first).to_be_visible()
+    assert card.bounding_box() == before
+    expect(card.locator('details a').last).to_have_attribute('href', 'https://example.com/global')
+    page.keyboard.press('Escape')
+    expect(card.locator('details a').first).not_to_be_visible()
+    expect(summary).to_be_focused()
+    summary.click()
+    page.locator('#source-search').click()
+    expect(card.locator('details a').first).not_to_be_visible()
+    assert not calls
+
+
 def test_failed_submission_preserves_fields_and_can_retry(sources_screen):
     page, calls, state = sources_screen
     state['success'] = False

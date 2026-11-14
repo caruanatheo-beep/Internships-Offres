@@ -23,7 +23,6 @@
         card.querySelector(".initials").textContent = proposal.company.slice(0,1).toUpperCase();
         card.querySelector(".source-link").href = url;
         card.querySelector(".source-link").setAttribute("aria-label", "Consulter la source proposée : " + proposal.company);
-        card.querySelector(".source-domain").textContent = new URL(url).hostname.replace(/^www\./, "");
         card.querySelector("details").hidden = true;
         if (typeof proposal.reason === "string" && proposal.reason) {
           const text = document.createElement("p"); text.className = "source-reason";
@@ -46,8 +45,8 @@
       const url = safeLink(source.url); if (!url) continue;
       const card = byId("source-template").content.firstElementChild.cloneNode(true);
       card.querySelector("h3").textContent = source.name;
+      card.querySelector("h3").title = source.name;
       card.querySelector(".source-type").textContent = source.category;
-      card.querySelector(".source-domain").textContent = new URL(url).hostname.replace(/^www\./, "");
       const link = card.querySelector(".source-link"); link.href = url;
       link.setAttribute("aria-label", "Consulter le site carrière : " + source.name);
       const initials = card.querySelector(".initials"), image = card.querySelector("img");
@@ -56,9 +55,16 @@
       if (/^logos\/[a-zA-Z0-9._-]+\.png$/.test(source.logo)) {
         image.onload = () => {image.hidden = false; initials.hidden = true;}; image.src = source.logo;
       }
-      const details = card.querySelector("details"); details.hidden = source.feeds.length < 2;
-      details.querySelector("summary").textContent = source.feeds.length + " portails suivis";
-      for (const feed of source.feeds) {
+      const feeds = [...new Map(source.feeds.filter(feed => safeLink(feed.url)).map(feed => [safeLink(feed.url),feed])).values()];
+      const details = card.querySelector("details"); details.hidden = feeds.length < 2;
+      card.classList.toggle("has-feeds", !details.hidden);
+      const summary = details.querySelector("summary");
+      summary.textContent = feeds.length + " sites";
+      summary.setAttribute("aria-label", "Afficher les " + feeds.length + " sites carrière de " + source.name);
+      details.addEventListener("toggle", () => {
+        if (details.open) for (const other of document.querySelectorAll(".source-feeds[open]")) if (other !== details) other.open = false;
+      });
+      for (const feed of feeds) {
         const href = safeLink(feed.url); if (!href) continue;
         const item = document.createElement("li"), anchor = document.createElement("a");
         anchor.textContent = feed.name; anchor.href = href; anchor.target = "_blank";
@@ -140,4 +146,12 @@
     }
   });
   window.addEventListener("hashchange", showView); showView();
+  document.addEventListener("click", event => {
+    for (const details of document.querySelectorAll(".source-feeds[open]")) if (!details.contains(event.target)) details.open = false;
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape") for (const details of document.querySelectorAll(".source-feeds[open]")) {
+      details.open = false; details.querySelector("summary").focus();
+    }
+  });
 })();
