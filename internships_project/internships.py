@@ -3102,7 +3102,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
     def enrich(pair: tuple[str, Opportunity]) -> Opportunity | None:
         path, job = pair
         reused = _cached_detail(job)
-        if reused and reused.description:
+        if reused and reused.description and _display_offer_location(reused.location) != "Non précisé":
             return replace(reused, source=f"Workday career site · {company}")
         try:
             response = client.get(base + path, timeout=(8, 20))

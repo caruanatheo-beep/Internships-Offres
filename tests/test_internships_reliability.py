@@ -123,7 +123,7 @@ def test_building_name_is_replaced_only_by_documented_workplace(monkeypatch, cou
         'externalPath': '/job/Madison-Ave-Corp/1', 'locationsText': 'Madison Ave Corp'}]}))
     monkeypatch.setattr(jobs.requests, 'get', lambda *a, **kw: reply({'jobPostingInfo': {
         'location': 'Madison Ave Corp', 'country': {'descriptor': country}, 'jobDescription': description}}))
-    monkeypatch.setattr(jobs, '_cached_detail', lambda job: None)
+    monkeypatch.setattr(jobs, '_cached_detail', lambda job: replace(job, description=description))
     result = jobs._workday_jobs('Santander CIB', jobs.WORKDAY['Santander CIB'])
     assert len(result) == 1 and result[0].location == expected
 
