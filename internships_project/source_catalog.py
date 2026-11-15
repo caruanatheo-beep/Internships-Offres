@@ -16,6 +16,7 @@ GROUPS = {
     'Business France VIE':'Business France',
 }
 EXTRA_URLS = {
+    'AQR Capital Management': 'https://careers.aqr.com/',
     'Société Générale Careers':'https://careers.societegenerale.com/',
     'Société Générale':'https://careers.societegenerale.com/',
     'Optiver':'https://optiver.com/working-at-optiver/career-opportunities/',
@@ -29,6 +30,7 @@ EXTRA_URLS = {
     'AXA':"https://recrutement.axa.fr/recherche-d%27offres",
 }
 ASSET_MANAGERS = {
+    'AQR Capital Management',
     'Pictet Asset Management',
     'Sienna Investment Managers','Sycomore Asset Management','Point72','Qube Research & Technologies',
     '21shares','WisdomTree','Amundi','Covéa Finance','Comgest','DNCA','Candriam','Groupama AM',
@@ -40,6 +42,7 @@ OTHER = {'Finance Active','Banque de France','Business France','JobTeaser','AXA'
 # First live addition, not the collection date. Record new sources here;
 # leave the older baseline undated rather than inventing historical dates.
 SOURCE_ADDED_ON = {
+    'AQR Capital Management': '2026-11-15',
     'Susquehanna': '2026-11-15',
     'Akuna Capital': '2026-11-15',
     'Candriam': '2026-11-12',

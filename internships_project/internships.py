@@ -34,6 +34,7 @@ SMARTRECRUITERS = {
     "Financeactive": "Finance Active",
 }
 GREENHOUSE = {
+    "aqr": "AQR Capital Management",
     "akunacapital": "Akuna Capital",
     "point72": "Point72",
     "janestreet": "Jane Street",
@@ -844,6 +845,10 @@ def _experienced_junior(context: str) -> bool:
 
 
 def _asset_management_sales_support(title: str, context: str) -> bool:
+    if (re.fullmatch(r"Business Development Analyst\s*[-–]\s*U\.?S\.?\s+Institutional", title.strip(), re.I)
+            and re.search(r"join our Institutional\s*&\s*Global Consultant Relations Team", context, re.I)
+            and re.search(r"\b(?:investment|asset) management\b", context, re.I)):
+        return True
     return bool(re.search(r"\b(?:client relationship|relationship (?:support|management)|client coverage)\b", title, re.I)
         and re.search(r"\b(?:asset management|investment management)\b", context, re.I)
         and re.search(r"\b(?:join|support)\w*\b.{0,100}\b(?:sales|distribution) (?:desk|team)\b", context, re.I))
@@ -1008,6 +1013,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "jobs.candriam.com", "eofe.fa.us2.oraclecloud.com",
         "jobs.commerzbank.com", "jobs.standardchartered.com", "apply.careers.hsbc.com",
         "www.akunacapital.com", "akunacapital.com", "careers.sig.com",
+        "careers.aqr.com",
         *(board[0] for board in WORKDAY.values()),
     }
     try:
@@ -1092,10 +1098,29 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
         if deadline and deadline < today:
             continue
         description = _plain_text(html.unescape(str(item.get("content") or "")))
+        title = str(item.get("title") or "").strip()
+        employment = ""
+        offer_url = str(item.get("absolute_url") or "")
+        if slug == "aqr":
+            # AQR's summer BD programme also places interns in US Wealth.
+            # Publish only the explicitly institutional, confirmed junior role.
+            # The existing Graduate family also contains junior analyst jobs.
+            if (not _asset_management_sales_support(title, description)
+                    or not re.search(r"\b[01]\s*[-–]\s*2\s+years? of relevant post-undergraduate experience\b",
+                                     description, re.I)
+                    or _experienced_junior(description)):
+                continue
+            identity = str(item.get("id") or "")
+            if not re.fullmatch(r"[1-9][0-9]*", identity):
+                raise ValueError("Identifiant public AQR invalide")
+            # The feed repeats gh_jid; a fixed employer URL avoids duplicates
+            # and never follows an arbitrary URL supplied by a public row.
+            offer_url = f"https://careers.aqr.com/jobs?gh_jid={identity}"
+            employment = "Graduate"
         job = _opportunity(
-            str(item.get("title") or ""), company,
-            str((item.get("location") or {}).get("name") or "").strip(), "",
-            str(item.get("absolute_url") or ""), published,
+            title, company,
+            str((item.get("location") or {}).get("name") or "").strip(), employment,
+            offer_url, published,
             _start_period(description) or _title_period(str(item.get("title") or "")),
             role_context=description,
         )
