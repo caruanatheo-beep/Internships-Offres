@@ -310,6 +310,9 @@ JOBTEASER_CITIES = {
 # Brand icons are requested from the employer's own site. If an icon is absent,
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
+    "akunacapital": "akunacapital.com",
+    "susquehanna": "sig.com",
+    "aqrcapitalmanagement": "www.aqr.com",
     "21shares": "www.21shares.com",
     "axa": "www.axa.com",
     "bpcenatixisbred": "www.groupebpce.com",
