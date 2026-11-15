@@ -43,6 +43,7 @@ CLIENT_SOLUTIONS = {'Bloomberg'}
 # First live addition, not the collection date. Record new sources here;
 # leave the older baseline undated rather than inventing historical dates.
 SOURCE_ADDED_ON = {
+    'Bank of America': '2026-11-15',
     'Bloomberg': '2026-11-15',
     'AQR Capital Management': '2026-11-15',
     'Susquehanna': '2026-11-15',

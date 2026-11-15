@@ -64,6 +64,7 @@ WORKDAY = {
     "OCBC Global Markets": ("ocbc.wd102.myworkdayjobs.com", "ocbc", "External"),
 }
 CAREER_PORTALS = {
+    "Bank of America": "https://careers.bankofamerica.com/en-us/students/job-search",
     "Bloomberg": "https://bloomberg.avature.net/careers/SearchJobs/",
     "Susquehanna": "https://careers.sig.com/institutional-sales/jobs",
     "Pictet Asset Management": "https://career5.successfactors.eu/career?company=banquepict",
@@ -311,6 +312,7 @@ JOBTEASER_CITIES = {
 # Brand icons are requested from the employer's own site. If an icon is absent,
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
+    "bank of america": "careers.bankofamerica.com",
     "bloomberg": "bloomberg.avature.net",
     "akunacapital": "akunacapital.com",
     "susquehanna": "sig.com",
@@ -1043,7 +1045,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "jobs.candriam.com", "eofe.fa.us2.oraclecloud.com",
         "jobs.commerzbank.com", "jobs.standardchartered.com", "apply.careers.hsbc.com",
         "www.akunacapital.com", "akunacapital.com", "careers.sig.com",
-        "careers.aqr.com", "bloomberg.avature.net",
+        "careers.aqr.com", "bloomberg.avature.net", "careers.bankofamerica.com",
         *(board[0] for board in WORKDAY.values()),
     }
     try:
@@ -2321,6 +2323,124 @@ class _PartialSourceError(ValueError):
         self.jobs = jobs
         self.failed_urls = set(failed_urls)
         self.preserve_cached = bool(search_failures)
+
+
+def _bofa_detail(url: str, title: str, identity: str, page_html: str) -> Opportunity | None:
+    """Verify the campus vacancy itself, without following application/login links."""
+    posting = _jsonld_jobposting(page_html)
+    identifier = posting.get("identifier") or {}
+    employer = posting.get("hiringOrganization") or {}
+    if (not isinstance(identifier, dict) or str(identifier.get("value")) != identity
+            or not isinstance(employer, dict) or employer.get("name") != "Bank of America"
+            or _canonical_title(html.unescape(str(posting.get("title") or ""))) != _canonical_title(title)):
+        raise ValueError("Fiche Bank of America sans annonce correspondante")
+    page = _CareerHTML()
+    page.feed(page_html)
+    if not any(urlparse(href).scheme == "https" and urlparse(href).netloc == "bankcampuscareers.tal.net"
+               and re.search(rf"/opp/{identity}-[^/]+/en-GB$", urlparse(href).path)
+               for href, _ in page.links):
+        raise ValueError("Fiche Bank of America sans candidature ouverte vérifiable")
+    description = _plain_text(str(posting.get("description") or ""))
+    if not description:
+        raise ValueError("Description Bank of America absente")
+    if re.search(r"no longer accepting applications|position (?:has been )?filled|job is no longer available",
+                 description, re.I):
+        return None
+    if _experienced_junior(description):
+        return None
+    if not re.search(r"\binstitutional(?: investor)? clients\b|\binstitutional investors\b", description, re.I):
+        return None
+    def campus_date(value: str) -> str:
+        for fmt in ("%m/%d/%Y", "%b %d, %Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value.strip(), fmt).date().isoformat()
+            except ValueError:
+                continue
+        return ""
+    # The campus page uses US calendar dates, not ISO datePosted. Do not use
+    # indexedDate/internalPostedDate, or a graduation year as the start date.
+    published = campus_date(str(posting.get("datePosted") or ""))
+    today = datetime.now(timezone.utc).date().isoformat()
+    if published > today:
+        published = ""
+    posted = re.search(r'<div\b[^>]*class=["\'][^"\']*\bhead__posted\b[^"\']*["\'][^>]*>(.*?)</div>',
+                       page_html, re.I | re.S)
+    apply_by = re.search(r"\bApply by\s+([A-Za-z]{3} \d{1,2}, \d{4})\b",
+                         _plain_text(posted[1]) if posted else "")
+    deadline = campus_date(apply_by[1]) if apply_by else ""
+    if deadline and deadline < today:
+        return None
+    if apply_by and not deadline:
+        raise ValueError("Échéance Bank of America invalide")
+    job = _opportunity(title, "Bank of America", _structured_job_location(posting),
+                       str(posting.get("employmentType") or "").replace("_", " "), url, published,
+                       _structured_job_start(posting) or _start_period(description) or _title_period(title),
+                       role_context=description)
+    return replace(job, source="Site carrière · careers.bankofamerica.com", deadline=deadline,
+                   description=description[:12_000]) if job else None
+
+
+def _bofa_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
+    """Worldwide campus catalogue; accept verified institutional markets Sales."""
+    endpoint = "https://careers.bankofamerica.com/services/campusjobssearchservlet"
+    candidates: dict[str, tuple[str, str]] = {}
+    search_failures = 0
+    # start=10 returns an empty page on this board despite totalMatches=12.
+    # Grow a bounded prefix instead, checking coverage rather than declaring
+    # the source complete when a truncated/empty page is returned.
+    limit = 100
+    try:
+        while True:
+            response = requests.get(endpoint, params={"start": 0, "rows": limit, "search": "getAllJobs"},
+                                    timeout=(8, 20), allow_redirects=False)
+            response.raise_for_status()
+            if response.status_code != 200:
+                raise ValueError("Catalogue Bank of America indisponible")
+            payload = response.json()
+            rows, total = payload.get("jobsList"), payload.get("totalMatches")
+            if (not isinstance(rows, list) or type(total) is not int or total < 0
+                    or len(rows) > total or len(rows) > limit):
+                raise ValueError("Catalogue Bank of America incohérent")
+            seen = set()
+            for row in rows:
+                identity = str(row.get("jobRequisitionId") or "")
+                if not identity.isdigit():
+                    raise ValueError("Annonce Bank of America sans référence")
+                seen.add(identity)
+                title = html.unescape(str(row.get("postingTitle") or ""))
+                employment = str(row.get("timeType") or "")
+                if (not _kind(title, employment)
+                        or not re.search(r"\bsales\b", title, re.I)
+                        or re.search(r"\b(?:retail|corporate|quant\w*|research|developer|engineer|operations|"
+                                     r"senior|director|vice president|wealth|consumer)\b|private banking|"
+                                     r"back[ -]?office|middle[ -]?office", title, re.I)):
+                    continue
+                path = str(row.get("jcrURL") or "")
+                if not re.fullmatch(rf"/en-us/students/job-detail/{identity}/[a-z0-9-]+", path):
+                    raise ValueError("Lien Bank of America invalide")
+                candidates.setdefault(identity, ("https://careers.bankofamerica.com" + path, title))
+            if len(seen) == total:
+                break
+            if len(seen) < len(rows) or len(rows) < limit or limit >= 2000:
+                raise ValueError("Catalogue Bank of America incomplet")
+            limit = min(total, 2000)
+    except (requests.RequestException, ValueError, TypeError, AttributeError):
+        search_failures = 1
+    found, failed = [], []
+    for identity, (url, title) in candidates.items():
+        try:
+            response = requests.get(url, timeout=(8, 20), allow_redirects=False)
+            response.raise_for_status()
+            if response.status_code != 200:
+                raise ValueError("Fiche Bank of America indisponible")
+            job = _bofa_detail(url, title, identity, response.text)
+            if job:
+                found.append(job)
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            failed.append(url)
+    if failed or search_failures:
+        raise _PartialSourceError(found, failed, search_failures=search_failures)
+    return found
 
 
 def _bloomberg_detail(url: str, title: str, location: str, page_html: str) -> Opportunity | None:
@@ -4106,6 +4226,7 @@ def _opportunity_source_tasks() -> list[tuple[str, object, tuple]]:
         ("Optiver", _optiver_jobs, ("", "")),
         ("Susquehanna", _susquehanna_jobs, ("", "")),
         ("Bloomberg", _bloomberg_jobs, ("", "")),
+        ("Bank of America", _bofa_jobs, ("", "")),
         ("UBS", _ubs_jobs, ("", "")),
         ("Pictet Asset Management", _pictet_jobs, ()),
         ("Soci\u00e9t\u00e9 G\u00e9n\u00e9rale Careers", _socgen_jobs, ("", "")),
