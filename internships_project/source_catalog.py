@@ -38,7 +38,7 @@ ASSET_MANAGERS = {
     '21shares','WisdomTree','Amundi','Covéa Finance','Comgest','DNCA','Candriam','Groupama AM',
     'Schroders','La Française','Ofi Invest','Tikehau Capital','CFM',
 }
-TRADING = {'Maven Securities','TP ICAP','Akuna Capital','Jane Street','IMC Trading','Flow Traders','Da Vinci','Optiver','Statkraft','Marex','Kepler Cheuvreux','Susquehanna'}
+TRADING = {'Akuna Capital', 'Da Vinci', 'Flow Traders', 'IMC Trading', 'Jane Street', 'Kepler Cheuvreux', 'Marex', 'Maven Securities', 'Optiver', 'Squarepoint Capital', 'Statkraft', 'Susquehanna', 'TP ICAP'}
 OTHER = {'Finance Active','Banque de France','Business France','JobTeaser','AXA','Euronext'}
 CLIENT_SOLUTIONS = {'Bloomberg', 'FactSet'}
 
@@ -48,6 +48,7 @@ SOURCE_ADDED_ON = {
     'Capital Group': '2026-11-15',
     'Maven Securities': '2026-11-15',
     'FactSet': '2026-11-15',
+    'Squarepoint Capital': '2026-11-15',
     'TP ICAP': '2026-11-15',
     'Morgan Stanley': '2026-11-15',
     'Bank of America': '2026-11-15',

@@ -35,6 +35,7 @@ SMARTRECRUITERS = {
 }
 GREENHOUSE = {
     "mavensecuritiesholdingltd": "Maven Securities",
+    "squarepointcapital": "Squarepoint Capital",
     "aqr": "AQR Capital Management",
     "akunacapital": "Akuna Capital",
     "point72": "Point72",
@@ -320,6 +321,7 @@ COMPANY_ICON_HOSTS = {
     "factset": "www.factset.com",
     "capitalgroup": "www.capitalgroup.com",
     "mavensecurities": "www.mavensecurities.com",
+    "squarepointcapital": "www.squarepoint-capital.com",
     "tpicap": "tpicap.com",
     "morganstanley": "www.morganstanley.com",
     "bankofamerica": "careers.bankofamerica.com",
@@ -1233,6 +1235,18 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
         title = str(item.get("title") or "").strip()
         employment = ""
         offer_url = str(item.get("absolute_url") or "")
+        if slug == "squarepointcapital":
+            identity = str(item.get("id") or "")
+            location = item.get("location")
+            if (not re.fullmatch(r"[1-9][0-9]*", identity) or not title or not description
+                    or not isinstance(location, dict) or not str(location.get("name") or "").strip()):
+                raise ValueError("Annonce publique Squarepoint incomplète")
+            if re.search(r"\b(?:infrastructure|desktop|platform|retail)\b", title, re.I):
+                continue  # IT infrastructure and retail are outside desk roles.
+            # The official site renders Greenhouse details in JavaScript. Use
+            # the verified provider permalink, which redirects to that same job,
+            # rather than trusting an arbitrary URL supplied by a public row.
+            offer_url = f"https://job-boards.greenhouse.io/{slug}/jobs/{identity}"
         if slug == "aqr":
             # AQR's summer BD programme also places interns in US Wealth.
             # Publish only the explicitly institutional, confirmed junior role.
@@ -1259,7 +1273,7 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
         if job:
             job = replace(job, description=description[:12_000], deadline=deadline)
             jobs.append(replace(job, source=f"Site carrière · Greenhouse · {company}"))
-    return jobs
+    return _deduplicate_opportunities(jobs) if slug == "squarepointcapital" else jobs
 
 
 def _optiver_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
