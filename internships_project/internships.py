@@ -64,6 +64,7 @@ WORKDAY = {
     "OCBC Global Markets": ("ocbc.wd102.myworkdayjobs.com", "ocbc", "External"),
 }
 CAREER_PORTALS = {
+    "Morgan Stanley": "https://www.morganstanley.com/careers/career-opportunities-search",
     "Bank of America": "https://careers.bankofamerica.com/en-us/students/job-search",
     "Bloomberg": "https://bloomberg.avature.net/careers/SearchJobs/",
     "Susquehanna": "https://careers.sig.com/institutional-sales/jobs",
@@ -312,7 +313,8 @@ JOBTEASER_CITIES = {
 # Brand icons are requested from the employer's own site. If an icon is absent,
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
-    "bank of america": "careers.bankofamerica.com",
+    "morganstanley": "www.morganstanley.com",
+    "bankofamerica": "careers.bankofamerica.com",
     "bloomberg": "bloomberg.avature.net",
     "akunacapital": "akunacapital.com",
     "susquehanna": "sig.com",
@@ -999,12 +1001,40 @@ def _kind(title: str, employment: str = "") -> str | None:
     return None
 
 
+def _morgan_stanley_kind(title: str, employment: str, description: str) -> str | None:
+    """An Analyst title alone does not establish an early-career contract."""
+    kind = _kind(title, employment)
+    if kind in ("Stage", "VIE"):
+        return kind
+    if not kind and (not _morgan_stanley_sales_candidate(title)
+            or not re.search(r"\banalyst\b", title, re.I)
+            or re.search(r"\b(?:senior|sr|director|vice president|manager|head|lead|apprenticeship|alternance)\b",
+                         title + " " + employment, re.I)):
+        return None
+    experience = list(re.finditer(
+        r"\b(\d+)\s*(?:[-–—]\s*(\d+))?\s*(\+)?\s*years?\b"
+        r"[^.!?;\n]{0,45}\bexperience\b", description, re.I))
+    if (any(int(match[2] or match[1]) > 2 or match[3] for match in experience)
+            or _experienced_junior(description)):
+        return None
+    if kind:
+        return kind
+    # The existing Graduate family also contains explicitly junior analysts.
+    # Preserve the employer's title and employmentType, and recheck this evidence
+    # when deduplicating/caching instead of fabricating a graduate contract.
+    if experience or re.search(r"\b(?:entry[ -]level|recent graduates?|no (?:prior )?experience required)\b",
+                               description, re.I):
+        return "Graduate"
+    return None
+
+
 def _opportunity(title: str, company: str, location: str, employment: str,
                  url: str, published: str, start_period: str = "",
                  role_context: str = "", *, defer_junior_context: bool = False) -> Opportunity | None:
     title = title.strip()
     location = _clean_job_location(location, title)
-    kind = _kind(title, employment)
+    kind = (_morgan_stanley_kind(title, employment, role_context)
+            if company == "Morgan Stanley" else _kind(title, employment))
     market = _market_relevant_with_context(title, role_context)
     pending_junior = defer_junior_context and not role_context and _junior_analyst(title) and _market_candidate(title)
     if (not kind or not (market or pending_junior) or _excluded_employer(company) or not _plausible_location(location)
@@ -1046,6 +1076,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "jobs.commerzbank.com", "jobs.standardchartered.com", "apply.careers.hsbc.com",
         "www.akunacapital.com", "akunacapital.com", "careers.sig.com",
         "careers.aqr.com", "bloomberg.avature.net", "careers.bankofamerica.com",
+        "morganstanley.eightfold.ai",
         *(board[0] for board in WORKDAY.values()),
     }
     try:
@@ -2323,6 +2354,166 @@ class _PartialSourceError(ValueError):
         self.jobs = jobs
         self.failed_urls = set(failed_urls)
         self.preserve_cached = bool(search_failures)
+
+
+def _morgan_stanley_sales_candidate(title: str) -> bool:
+    return bool(re.search(r"\bsales\b", title, re.I) and _market_candidate(title)
+                and not re.search(
+                    r"\b(?:senior|sr|vp|vice president|director|head|lead|manager|wealth|retail|corporate|"
+                    r"consumer|compensation|operations|control|compliance|research|developer|engineer|quant\w*)\b",
+                    title, re.I))
+
+
+def _morgan_stanley_detail(identity: str, title: str) -> Opportunity | None:
+    host = "https://morganstanley.eightfold.ai"
+    path = f"/careers/job/{identity}"
+    url = f"{host}{path}?domain=morganstanley.com"
+    response = requests.get(host + "/api/pcsx/position_details",
+                            params={"position_id": identity, "domain": "morganstanley.com"},
+                            timeout=(8, 20), allow_redirects=False)
+    if response.status_code in (404, 410):
+        return None
+    response.raise_for_status()
+    if response.status_code != 200:
+        raise ValueError("Fiche Morgan Stanley indisponible")
+    payload = response.json()
+    info = payload.get("data") or {}
+    if (payload.get("status") != 200 or str(info.get("id")) != identity
+            or info.get("positionUrl") != path
+            or _canonical_title(str(info.get("name") or "")) != _canonical_title(title)):
+        raise ValueError("Fiche Morgan Stanley sans annonce correspondante")
+    action = (info.get("positionUserActions") or {}).get("applyAction") or {}
+    apply = urlparse(str(action.get("applyUrl") or ""))
+    reference = str(info.get("atsJobId") or "")
+    if (action.get("status") != "link_off" or apply.scheme != "https"
+            or apply.netloc != "ms.wd5.myworkdayjobs.com" or not re.fullmatch(r"(?:PT-)?JR\d+", reference)
+            or not re.fullmatch(r"/External/job/[^/]+/[^/]+_" + re.escape(reference) + r"(?:-\d+)?/apply", apply.path)):
+        raise ValueError("Fiche Morgan Stanley sans candidature employeur vérifiable")
+    # Read only the public vacancy. Never follow the application link.
+    response = requests.get(url, timeout=(8, 20), allow_redirects=False)
+    if response.status_code in (404, 410):
+        return None
+    response.raise_for_status()
+    if response.status_code != 200:
+        raise ValueError("Redirection de la fiche Morgan Stanley")
+    posting = _jsonld_jobposting(response.text)
+    if (not posting or posting.get("url") != url
+            or (posting.get("hiringOrganization") or {}).get("name") != "Morgan Stanley"
+            or _canonical_title(str(posting.get("title") or "")) != _canonical_title(title)):
+        raise ValueError("Métadonnées Morgan Stanley sans annonce correspondante")
+    deadline = str(posting.get("validThrough") or "")[:10]
+    if deadline:
+        try:
+            if date.fromisoformat(deadline) < datetime.now(timezone.utc).date():
+                return None
+        except ValueError as exc:
+            raise ValueError("Échéance Morgan Stanley invalide") from exc
+    description = _plain_text(str(posting.get("description") or ""))
+    if not description:
+        raise ValueError("Description Morgan Stanley absente")
+    if re.search(r"no longer accepting applications|position (?:has been )?filled|job is no longer available",
+                 description, re.I):
+        return None
+    if not (re.search(r"\binstitutional (?:\w+\s+){0,2}(?:clients|investors|sales)\b|\basset managers\b|\bhedge funds\b",
+                      description, re.I)
+            and re.search(r"\b(?:fixed income|foreign exchange|fx|rates|credit|equities|equity|derivatives)\b",
+                          title + " " + description, re.I)):
+        return None
+    locations = info.get("locations")
+    if (not isinstance(locations, list) or not locations
+            or any(not isinstance(place, str) or not _plausible_location(place) for place in locations)):
+        raise ValueError("Lieu Morgan Stanley absent")
+    # Location metadata is sometimes just HK; the matching public detail API
+    # retains the actual city, including every location for a multi-city role.
+    employment = str(posting.get("employmentType") or "").replace("_", " ")
+    job = _opportunity(title, "Morgan Stanley", " / ".join(dict.fromkeys(locations)), employment,
+                       url, _jsonld_job_posted(response.text),
+                       _structured_job_start(posting) or _start_period(description) or _title_period(title),
+                       role_context=description)
+    return replace(job, source="Site carrière · morganstanley.eightfold.ai", deadline=deadline,
+                   description=description[:12_000]) if job else None
+
+
+def _morgan_stanley_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
+    """Scan worldwide Sales results, then verify institutional early-career roles."""
+    endpoint = "https://morganstanley.eightfold.ai/api/pcsx/search"
+    def page(offset: int) -> tuple[list, int]:
+        response = requests.get(endpoint, params={"domain": "morganstanley.com", "query": "sales",
+                                                 "location": "", "start": offset, "sort_by": "timestamp"},
+                                timeout=(8, 20), allow_redirects=False)
+        response.raise_for_status()
+        if response.status_code != 200:
+            raise ValueError("Redirection du catalogue Morgan Stanley")
+        payload = response.json()
+        data = payload.get("data") or {}
+        rows, total = data.get("positions"), data.get("count")
+        if (payload.get("status") != 200 or not isinstance(rows, list)
+                or type(total) is not int or total < 0 or len(rows) != min(10, max(0, total - offset))):
+            raise ValueError("Catalogue Morgan Stanley incomplet")
+        return rows, total
+
+    found, failed = [], []
+    candidates: dict[str, str] = {}
+    seen: dict[str, int] = {}
+    overlaps: set[int] = set()
+    search_failures = 0
+    search_error: Exception | None = None
+    def accept(result: tuple[list, int], total: int, offset: int) -> None:
+        rows, count = result
+        if count != total:
+            raise ValueError("Catalogue Morgan Stanley modifié pendant la collecte")
+        for row in rows:
+            identity = str(row.get("id") or "")
+            if (not identity.isdigit()
+                    or row.get("positionUrl") != f"/careers/job/{identity}"):
+                raise ValueError("Référence ou pagination Morgan Stanley incohérente")
+            if identity in seen:
+                overlaps.update((offset, seen[identity]))
+            else:
+                seen[identity] = offset
+            title = html.unescape(str(row.get("name") or ""))
+            if _morgan_stanley_sales_candidate(title):
+                candidates[identity] = title
+
+    try:
+        first, total = page(0)
+        accept((first, total), total, 0)
+        # The public API returns ten rows even when num=100 is requested.
+        # Equal publication timestamps can move a row across page boundaries.
+        # Deduplicate references, then reread only overlapping boundaries once;
+        # never declare completion until every advertised reference was seen.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [(offset, pool.submit(page, offset)) for offset in range(10, min(total, 2000), 10)]
+            for offset, future in futures:
+                try:
+                    accept(future.result(), total, offset)
+                except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
+                    search_failures += 1
+                    search_error = search_error or exc
+        if len(seen) < total and overlaps and not search_failures:
+            retry_offsets = {near for offset in overlaps for near in (offset - 10, offset, offset + 10)
+                             if 0 <= near < min(total, 2000)}
+            for offset in sorted(retry_offsets):
+                try:
+                    accept(page(offset), total, offset)
+                except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
+                    search_failures += 1
+                    search_error = search_error or exc
+        if len(seen) != total:
+            search_failures += 1
+    except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
+        search_failures += 1
+        search_error = search_error or exc
+    for identity, title in candidates.items():
+        try:
+            job = _morgan_stanley_detail(identity, title)
+            if job:
+                found.append(job)
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            failed.append(f"https://morganstanley.eightfold.ai/careers/job/{identity}?domain=morganstanley.com")
+    if failed or search_failures:
+        raise _PartialSourceError(found, failed, search_failures=search_failures) from search_error
+    return found
 
 
 def _bofa_detail(url: str, title: str, identity: str, page_html: str) -> Opportunity | None:
@@ -4115,8 +4306,11 @@ def _eligible_offer(job: Opportunity) -> bool:
             return False
     except ValueError:
         pass
-    if job.employment is not None and _kind(job.title, job.employment) != job.kind:
-        return False
+    if job.employment is not None:
+        kind = (_morgan_stanley_kind(job.title, job.employment, job.description)
+                if job.company == "Morgan Stanley" else _kind(job.title, job.employment))
+        if kind != job.kind:
+            return False
     if job.employment is None and _kind(job.title) is None and re.search(
         r"\b(?:internal|international|senior|vice president|executive director)\b", job.title, re.I
     ):
@@ -4226,6 +4420,7 @@ def _opportunity_source_tasks() -> list[tuple[str, object, tuple]]:
         ("Optiver", _optiver_jobs, ("", "")),
         ("Susquehanna", _susquehanna_jobs, ("", "")),
         ("Bloomberg", _bloomberg_jobs, ("", "")),
+        ("Morgan Stanley", _morgan_stanley_jobs, ("", "")),
         ("Bank of America", _bofa_jobs, ("", "")),
         ("UBS", _ubs_jobs, ("", "")),
         ("Pictet Asset Management", _pictet_jobs, ()),

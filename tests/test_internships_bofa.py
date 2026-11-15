@@ -167,7 +167,8 @@ def test_source_card_collector_and_official_png():
     assert source['url'] == HOST + '/en-us/students/job-search'
     task, = [t for t in jobs._opportunity_source_tasks() if t[0] == source['name']]
     assert task[1] is jobs._bofa_jobs
-    path = jobs.COMPANY_LOGO_DIR / (jobs.COMPANY_ICON_HOSTS['bank of america'] + '.png')
+    path = jobs.COMPANY_LOGO_DIR / (jobs.COMPANY_ICON_HOSTS[jobs._canonical_company('Bank of America')] + '.png')
+    assert jobs._company_icon('Bank of America').startswith('data:image/png;base64,')
     assert 0 < path.stat().st_size <= 512 * 1024
     with Image.open(path) as image:
         assert image.format == 'PNG'
