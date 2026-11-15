@@ -38,10 +38,12 @@ ASSET_MANAGERS = {
 }
 TRADING = {'Akuna Capital','Jane Street','IMC Trading','Flow Traders','Da Vinci','Optiver','Statkraft','Marex','Kepler Cheuvreux','Susquehanna'}
 OTHER = {'Finance Active','Banque de France','Business France','JobTeaser','AXA','Euronext'}
+CLIENT_SOLUTIONS = {'Bloomberg'}
 
 # First live addition, not the collection date. Record new sources here;
 # leave the older baseline undated rather than inventing historical dates.
 SOURCE_ADDED_ON = {
+    'Bloomberg': '2026-11-15',
     'AQR Capital Management': '2026-11-15',
     'Susquehanna': '2026-11-15',
     'Akuna Capital': '2026-11-15',
@@ -72,6 +74,7 @@ def public_source_catalog() -> list[dict]:
         group = 'BNP Paribas' if name.startswith('BNP Paribas') else GROUPS.get(name,name)
         if group not in groups:
             category=('Gestion d’actifs' if group in ASSET_MANAGERS else
+                      'Information financière & relation clients' if group in CLIENT_SOLUTIONS else
                       'Courtage & trading' if group in TRADING else
                       'Autres sources' if group in OTHER else 'Banques & services titres')
             groups[group]={'name':group,'category':category,'url':url,'feeds':[],

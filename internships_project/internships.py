@@ -64,6 +64,7 @@ WORKDAY = {
     "OCBC Global Markets": ("ocbc.wd102.myworkdayjobs.com", "ocbc", "External"),
 }
 CAREER_PORTALS = {
+    "Bloomberg": "https://bloomberg.avature.net/careers/SearchJobs/",
     "Susquehanna": "https://careers.sig.com/institutional-sales/jobs",
     "Pictet Asset Management": "https://career5.successfactors.eu/career?company=banquepict",
     "BBVA": "https://bbva.wd3.myworkdayjobs.com/en-US/BBVA",
@@ -310,6 +311,7 @@ JOBTEASER_CITIES = {
 # Brand icons are requested from the employer's own site. If an icon is absent,
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
+    "bloomberg": "bloomberg.avature.net",
     "akunacapital": "akunacapital.com",
     "susquehanna": "sig.com",
     "aqrcapitalmanagement": "www.aqr.com",
@@ -935,6 +937,8 @@ def _excluded_employer(company: str) -> bool:
 
 
 def _family(title: str, context: str = "") -> str:
+    if re.search(r"\banalytics\s*(?:&|and)\s*sales\b", title, re.I):
+        return "Client Service / Financial Solutions"
     if _asset_management_sales_support(title, context):
         return "Sales"
     title = unicodedata.normalize("NFKD", title.casefold())
@@ -1039,7 +1043,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "jobs.candriam.com", "eofe.fa.us2.oraclecloud.com",
         "jobs.commerzbank.com", "jobs.standardchartered.com", "apply.careers.hsbc.com",
         "www.akunacapital.com", "akunacapital.com", "careers.sig.com",
-        "careers.aqr.com",
+        "careers.aqr.com", "bloomberg.avature.net",
         *(board[0] for board in WORKDAY.values()),
     }
     try:
@@ -2317,6 +2321,147 @@ class _PartialSourceError(ValueError):
         self.jobs = jobs
         self.failed_urls = set(failed_urls)
         self.preserve_cached = bool(search_failures)
+
+
+def _bloomberg_detail(url: str, title: str, location: str, page_html: str) -> Opportunity | None:
+    """Read only the vacancy's own Avature fields, excluding related jobs/footer."""
+    blocks = re.findall(r'<article\b[^>]*class=["\'][^"\']*\barticle--details\b[^"\']*["\'][^>]*>(.*?)</article>',
+                        page_html, re.I | re.S)
+    sections = []
+    for block in blocks:
+        section = _CareerHTML()
+        section.feed(block)
+        sections.append(section)
+    if len(sections) < 3 or _canonical_title(" ".join(sections[0].parts)) != _canonical_title(title):
+        raise ValueError("Fiche Bloomberg sans annonce correspondante")
+    fields = sections[1].parts
+    def field(label: str) -> str:
+        return next((fields[index + 1] for index, part in enumerate(fields[:-1]) if part == label), "")
+    if not field("Location") or not re.fullmatch(r"[0-9]+", field("Ref #")):
+        raise ValueError("Fiche Bloomberg sans lieu ou référence")
+    description_section = next((section for section in sections[2:]
+                                if "Description & Requirements" in section.headings), None)
+    if description_section is None:
+        raise ValueError("Description Bloomberg absente")
+    description = " ".join(part for part in description_section.parts if part != "Description & Requirements")
+    if not description:
+        raise ValueError("Description Bloomberg vide")
+    if re.search(r"\b(?:no longer accepting applications|position (?:has been )?filled|job is no longer available)\b",
+                 description, re.I):
+        return None
+    # A visible apply link confirms that this detail is still a public vacancy.
+    # Inspect its identity only; never visit the login/application page.
+    identity = urlparse(url).path.rsplit("/", 1)[-1]
+    page = _CareerHTML()
+    page.feed(page_html)
+    if not any(urljoin(url, href) == f"https://bloomberg.avature.net/careers/Login?jobId={identity}"
+               and label.strip().casefold() in {"apply", "apply now"} for href, label in page.links):
+        raise ValueError("Fiche Bloomberg sans candidature ouverte vérifiable")
+    if not re.search(r"sales|client service|financial solutions", field("Business Area"), re.I):
+        return None
+    employment = ""
+    if re.search(r"\banalytics\s*(?:&|and)\s*sales\b", title, re.I) and not _kind(title):
+        # These named entry programmes omit 'graduate' in some regions. Confirm
+        # the programme and entry requirements in its own description first.
+        if not (re.search(r"\banalytics\s*(?:&|and)\s*sales\s+program(?:me)?\b", description, re.I)
+                and re.search(r"begin your career|early professional|bachelor.?s degree|recent graduates?", description, re.I)
+                and re.search(r"financial markets", description, re.I)):
+            return None
+        employment = "Graduate programme"
+    if _experienced_junior(description):
+        return None
+    structured = _jsonld_jobposting(page_html)
+    deadline = str(structured.get("validThrough") or "")[:10]
+    try:
+        if deadline and date.fromisoformat(deadline) < datetime.now(timezone.utc).date():
+            return None
+    except ValueError:
+        deadline = ""
+    start = _structured_job_start(structured) or _start_period(description) or _title_period(title)
+    # The portal uses '2027 ... (May class, ...)' for an explicit intake.
+    cohort = re.search(r"\b([A-Za-z]+) class\b", title, re.I)
+    year = re.match(r"(20\d{2})\b", title)
+    if not start and cohort and year and start_month(f"{cohort[1]} {year[1]}"):
+        start = f"{cohort[1]} {year[1]}"
+    job = _opportunity(title, "Bloomberg", location or field("Location"), employment, url,
+                       _jsonld_job_posted(page_html), start, role_context=description)
+    return replace(job, source="Site carrière · bloomberg.avature.net", deadline=deadline,
+                   description=description[:12_000]) if job else None
+
+
+def _bloomberg_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
+    """Scan the worldwide portal without inherited experience/country filters."""
+    endpoint = CAREER_PORTALS["Bloomberg"]
+    candidates: dict[str, tuple[str, str, str]] = {}
+    seen: set[str] = set()
+    search_failures = 0
+    # Avature currently caps this board at 12 even if a larger size is requested.
+    for offset in range(0, 1200, 12):
+        try:
+            response = requests.get(endpoint, params={"jobRecordsPerPage": 12, "jobOffset": offset},
+                                    timeout=(8, 20), allow_redirects=False)
+            response.raise_for_status()
+            if response.status_code != 200:
+                raise ValueError("Redirection du catalogue Bloomberg")
+            total_match = re.search(r'aria-label=["\']([0-9]+) results["\']', response.text, re.I)
+            if not total_match:
+                raise ValueError("Catalogue Bloomberg sans nombre de résultats")
+            total = int(total_match[1])
+            rows = re.findall(r'<article\b[^>]*class=["\'][^"\']*\barticle--result\b[^"\']*["\'][^>]*>(.*?)</article>',
+                              response.text, re.I | re.S)
+            if len(rows) > 12 or rows and not total:
+                raise ValueError("Nombre d'annonces Bloomberg incohérent")
+            before = len(seen)
+            for block in rows:
+                row = _CareerHTML()
+                row.feed(block)
+                links = [(urljoin(endpoint, href), label) for href, label in row.links
+                         if label.casefold() != "apply"]
+                if not links:
+                    raise ValueError("Annonce Bloomberg sans lien")
+                url, title = links[0]
+                if (not is_trusted_offer_url(url) or urlparse(url).hostname != "bloomberg.avature.net"
+                        or not re.fullmatch(r"/careers/JobDetail/[^/]+/[0-9]+", urlparse(url).path) or not title):
+                    raise ValueError("Lien d'annonce Bloomberg invalide")
+                url = "https://bloomberg.avature.net" + urlparse(url).path
+                identity = url.rsplit("/", 1)[-1]
+                seen.add(identity)
+                # No fallback to quant, engineering, proprietary trading or ops.
+                if (not re.search(r"\b(?:sales|client services?|product specialist)\b", title, re.I)
+                        or re.search(r"\b(?:senior|director|engineer|developer|retail|corporate)\b", title, re.I)
+                        or not _market_candidate(title)
+                        or not (_kind(title) or re.search(r"\banalytics\s*(?:&|and)\s*sales\b", title, re.I))):
+                    continue
+                place = re.search(r'<span\b[^>]*class=["\'][^"\']*\blist-item-location\b[^"\']*["\'][^>]*>(.*?)</span>',
+                                  block, re.I | re.S)
+                candidates.setdefault(identity, (url, title, _plain_text(place[1]) if place else ""))
+            if (rows and len(seen) == before) or (not rows and offset < total):
+                raise ValueError("Pagination Bloomberg sans progression")
+            if offset + len(rows) >= total:
+                break
+            if len(rows) != 12:
+                raise ValueError("Page Bloomberg incomplète")
+        except (requests.RequestException, ValueError, TypeError):
+            search_failures += 1
+            break
+    else:
+        search_failures += 1
+    found: list[Opportunity] = []
+    failed: list[str] = []
+    for url, title, location in candidates.values():
+        try:
+            response = requests.get(url, timeout=(8, 20), allow_redirects=False)
+            response.raise_for_status()
+            if response.status_code != 200:
+                raise ValueError("Redirection de la fiche Bloomberg")
+            job = _bloomberg_detail(url, title, location, response.text)
+            if job:
+                found.append(job)
+        except (requests.RequestException, ValueError, TypeError):
+            failed.append(url)
+    if failed or search_failures:
+        raise _PartialSourceError(found, failed, search_failures=search_failures)
+    return found
 
 
 def _susquehanna_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
@@ -3945,6 +4090,7 @@ def _opportunity_source_tasks() -> list[tuple[str, object, tuple]]:
     tasks.extend([
         ("Optiver", _optiver_jobs, ("", "")),
         ("Susquehanna", _susquehanna_jobs, ("", "")),
+        ("Bloomberg", _bloomberg_jobs, ("", "")),
         ("UBS", _ubs_jobs, ("", "")),
         ("Pictet Asset Management", _pictet_jobs, ()),
         ("Soci\u00e9t\u00e9 G\u00e9n\u00e9rale Careers", _socgen_jobs, ("", "")),
