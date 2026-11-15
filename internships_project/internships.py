@@ -34,6 +34,7 @@ SMARTRECRUITERS = {
     "Financeactive": "Finance Active",
 }
 GREENHOUSE = {
+    "mavensecuritiesholdingltd": "Maven Securities",
     "aqr": "AQR Capital Management",
     "akunacapital": "Akuna Capital",
     "point72": "Point72",
@@ -316,6 +317,7 @@ JOBTEASER_CITIES = {
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
     "capitalgroup": "www.capitalgroup.com",
+    "mavensecurities": "www.mavensecurities.com",
     "tpicap": "tpicap.com",
     "morganstanley": "www.morganstanley.com",
     "bankofamerica": "careers.bankofamerica.com",
@@ -602,7 +604,7 @@ _START = re.compile(
     rf"\b(?:date de d[ée]but(?: (?:du |de )?(?:stage|contrat))?|d[ée]but (?:du |de )stage|"
     rf"date (?:pr[ée]vue de )?prise de (?:poste|fonction)|prise de (?:poste|fonction)|"
     rf"d[ée]marrage(?: du stage)?|[àa] pourvoir|[àa] partir (?:de|du|d['’])|dès|"
-    rf"date d['’]entr[ée]e|start(?:ing)? date|starting (?:in|on|from)|starts (?:in|on)|beginning in|begins in|commence en)"
+    rf"date d['’]entr[ée]e|start(?:ing)? date|starting (?:in|on|from)|starts (?:in|on)|beginning (?:in|on)|begins in|commence en)"
     rf"(?:\s+(?:souhait[ée]e?|pr[ée]vue?|pr[ée]visionnelle?))?\s*[:|\-–]*\s*"
     rf"(?:(?:le|en|au|pour|from|in|dès|[àa] partir (?:de|du)|of|[àa] pr[ée]voir)\s+)?"
     rf"(?P<period>{_PERIOD}|asap|dès que possible|imm[ée]diatement|immediate(?:ly)?)(?!\w)",
@@ -620,12 +622,27 @@ _MONTH_ALIASES = {
 
 
 def _start_period(text: str) -> str:
-    for match in _START.finditer(_plain_text(text)):
+    plain = _plain_text(text)
+    for match in _START.finditer(plain):
         period = match.group("period")
         if re.fullmatch(r"asap|dès que possible|imm[ée]diatement|immediate(?:ly)?", period, re.I):
             return "Dès que possible"
         if start_month(period):
             return period
+    # An explicitly labelled programme interval may share its year at the end.
+    # Keep graduation years and unlabelled seasonal titles out of start dates.
+    interval = re.search(
+        rf"\bprogram(?:me)? dates\s*:\s*(\d{{1,2}})(?:st|nd|rd|th)?\s+({_MONTH})"
+        rf"\s*[-–—]\s*(\d{{1,2}})(?:st|nd|rd|th)?\s+({_MONTH})\s+(20\d{{2}})\b",
+        plain, re.I)
+    if interval:
+        try:
+            first = date(int(interval[5]), _MONTH_ALIASES[interval[2].casefold()], int(interval[1]))
+            last = date(int(interval[5]), _MONTH_ALIASES[interval[4].casefold()], int(interval[3]))
+            if first <= last:
+                return first.isoformat()
+        except ValueError:
+            pass
     return ""
 
 
@@ -1158,6 +1175,13 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
     payload = response.json()
     if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
         raise ValueError("Catalogue public Greenhouse invalide")
+    # The public list endpoint is unpaginated. When supplied, total must account
+    # for the complete response; a truncated catalogue is not an empty success.
+    if "meta" in payload:
+        meta = payload["meta"]
+        if (not isinstance(meta, dict) or type(meta.get("total")) is not int
+                or meta["total"] != len(payload["jobs"])):
+            raise ValueError("Catalogue public Greenhouse incomplet")
 
     def calendar_date(value: object) -> str:
         try:
@@ -1170,6 +1194,8 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
     for item in payload["jobs"]:
         if not isinstance(item, dict):
             raise ValueError("Annonce publique Greenhouse invalide")
+        if item.get("location") is not None and not isinstance(item["location"], dict):
+            raise ValueError("Localisation publique Greenhouse invalide")
         # first_published is a posting date; updated_at is only a modification.
         published = calendar_date(item.get("first_published"))
         if published > today:
