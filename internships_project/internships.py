@@ -2371,6 +2371,21 @@ def _bloomberg_detail(url: str, title: str, location: str, page_html: str) -> Op
     if _experienced_junior(description):
         return None
     structured = _jsonld_jobposting(page_html)
+    # Related vacancies can also carry JobPosting data. A conflicting title or
+    # employer identity must not date, schedule or expire the current vacancy.
+    structured_title = structured.get("title", title)
+    structured_url = structured.get("url", url)
+    try:
+        metadata_url = urljoin(url, structured_url) if isinstance(structured_url, str) else ""
+        same_posting = (isinstance(structured_title, str)
+                        and _canonical_title(structured_title) == _canonical_title(title)
+                        and is_trusted_offer_url(metadata_url)
+                        and urlparse(metadata_url).hostname == "bloomberg.avature.net"
+                        and re.fullmatch(rf"/careers/JobDetail/[^/]+/{identity}", urlparse(metadata_url).path))
+    except ValueError:
+        same_posting = False
+    if not same_posting:
+        structured = {}
     deadline = str(structured.get("validThrough") or "")[:10]
     try:
         if deadline and date.fromisoformat(deadline) < datetime.now(timezone.utc).date():
@@ -2384,7 +2399,7 @@ def _bloomberg_detail(url: str, title: str, location: str, page_html: str) -> Op
     if not start and cohort and year and start_month(f"{cohort[1]} {year[1]}"):
         start = f"{cohort[1]} {year[1]}"
     job = _opportunity(title, "Bloomberg", location or field("Location"), employment, url,
-                       _jsonld_job_posted(page_html), start, role_context=description)
+                       _jsonld_job_posted(page_html) if structured else "", start, role_context=description)
     return replace(job, source="Site carrière · bloomberg.avature.net", deadline=deadline,
                    description=description[:12_000]) if job else None
 

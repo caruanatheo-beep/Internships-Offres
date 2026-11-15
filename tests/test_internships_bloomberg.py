@@ -71,6 +71,52 @@ corrigé avant la réussite ci-dessus et reproduit par les tests synthétiques.
 Comparaison publique séparée, INTERNSHIPS_PUBLIC_CATALOGUE_AUDIT=1 : 1 test
 réussi en 1,11 s ; seul Bloomberg existe localement sans être encore publié,
 aucune source publique sans collecteur local. Publication Pages non confirmée.
+
+Reprise de la même mission, 15/11/2026, sans nouvelle source sélectionnée :
+le snapshot Git contient déjà le travail Bloomberg décrit ci-dessus. GET publics
+sources.json et offers.json : HTTP 200, updated 2026-11-15T14:42:09.904316+00:00,
+66 sources locales/publiques identiques, 440 offres : 366 stages, 66 graduate,
+8 VIE ; 90 Sales, 14 Client Service / Financial Solutions, autres familles
+inchangées. Paris 115, Singapour 59, New York 34, Londres 30, Francfort 23,
+Hong Kong 18. Aucun doublon d'URL ; les cinq groupes ambigus décrits plus haut
+subsistent, sans les fusionner à partir du seul titre. Le schéma public utilise
+start_month et date_label : 270 mois de début absents, 68 dates de détection.
+Bloomberg : 10 Singapour, 2 Londres, 1 São Paulo, 1 Sydney ; cinq débuts en mai
+2027, neuf non précisés. Pas de datePosted/validThrough sur les fiches vérifiées.
+Ces observations ne confirment pas la publication du delta de cette reprise.
+
+GET suggestions avec Origin : HTTP 200, propositions actuelles Bank of America
+et Morgan Stanley, raisons vides ; aucune archive ni autre mutation.
+Bank of America : URL proposée et portail mondial /en-us/job-search sans filtre
+géographique HTTP 200. Le HTML initial étudiant mélange des postes professionnels ;
+sa liste ne permet pas de conclure. Le JavaScript officiel clientlib-base.js
+indique le flux public /services/campusjobssearchservlet. Requêtes GET vérifiées :
+https://careers.bankofamerica.com/services/campusjobssearchservlet?start=0&rows=10&search=getAllJobs
+HTTP 200, 10/12 ; start=10&rows=10 HTTP 200 mais liste vide malgré total=12 ;
+start=0&rows=100 HTTP 200, les 12 annonces sont présentes. Aucun filtre hérité,
+examen des titres/contrats Internship, Intern, Full Time Analyst, Programme,
+Graduate et des métiers Sales, Rates/Currencies, Global Markets. L'essai
+search=keywords&keywords=Global%20Markets retourne 204, sans valeur d'absence.
+https://careers.bankofamerica.com/en-us/students/job-detail/15269/global-markets-fixed-income-currencies-commodities-sales-full-time-analyst-2027-tokyo-tokyo-japan
+HTTP 200, FICC Sales institutionnel, anglais et japonais, échéance 29/11/2026,
+publié le 04/11 selon le flux : candidat pertinent et nouveau, non refusé.
+Le programme Mexico Rates and Currencies vise les clients corporate, hors cible.
+Morgan Stanley : URL proposée ?opportunity=sg, portail mondial sans ce filtre et
+https://morganstanley.eightfold.ai/careers HTTP 200, lien trouvé sur le site
+officiel. Audit des annonces/pagination incomplet ; aucune conclusion d'absence.
+Ces propositions sont documentées avant toute nouvelle découverte ; BlackRock
+et TP ICAP restent les comparaisons historiques ci-dessus. Bloomberg reste
+l'unique choix de cette mission reprise : proposition initialement prioritaire,
+14 programmes ouverts, couverture internationale et famille métier distincte.
+
+Correction limitée à Bloomberg : les métadonnées JobPosting dont le titre ou
+l'URL identifie une autre annonce ne peuvent plus dater ou expirer la fiche.
+Régression reproduite avant correction : 4 échecs, 3 réussites ; après correction
+61 réussites et 2 audits ignorés sans opt-in. Avec les deux opt-ins : 63 réussites
+en 80,21 s ; collecte de 14 annonces en 78,019 s, sans doublon. Vérifications
+complémentaires dates, dédoublonnage et logos : 63 tests et 72 sous-tests réussis.
+Les durées, langues et conditions de visa restent dans les descriptions ; les
+métadonnées contradictoires sont ignorées plutôt que remplacées par une estimation.
 """
 
 import html
@@ -251,6 +297,33 @@ def test_expiration_and_explicit_publication(serve, expiry, kept):
     if kept:
         assert found[0].published == '2026-11-10'
         assert found[0].deadline == (expiry if expiry != 'invalid' else '')
+
+
+@pytest.mark.parametrize('identity', [
+    {'title': 'Unrelated Sales Graduate Programme'},
+    {'url': BASE + 'JobDetail/Another-Programme/999'},
+    {'url': 'https://untrusted.invalid/careers/JobDetail/Programme/45729'},
+    {'url': {'@id': URL}},
+])
+def test_other_posting_metadata_cannot_date_or_expire_current_vacancy(serve, identity):
+    serve(details={URL: response(detail(structured={
+        '@type': 'JobPosting', **identity, 'datePosted': '2026-10-01',
+        'jobStartDate': '2028-09-01', 'validThrough': '2026-11-01'}))})
+    job, = jobs._bloomberg_jobs()
+    assert job.published == job.start_period == job.deadline == ''
+
+
+@pytest.mark.parametrize('identity', [
+    {'title': TITLE}, {'url': URL},
+    {'url': '/careers/JobDetail/Canonical-Slug/45729'},
+])
+def test_matching_posting_identity_keeps_verified_dates(serve, identity):
+    serve(details={URL: response(detail(structured={
+        '@type': 'JobPosting', **identity, 'datePosted': '2026-11-10',
+        'jobStartDate': '2027-06-21', 'validThrough': '2026-12-31'}))})
+    job, = jobs._bloomberg_jobs()
+    assert (job.published, job.start_period, job.deadline) == (
+        '2026-11-10', '2027-06-21', '2026-12-31')
 
 
 def test_global_pagination_and_duplicate_identity_before_detail(serve):
