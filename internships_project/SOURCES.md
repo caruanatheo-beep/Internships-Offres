@@ -1,5 +1,13 @@
 # Sources d'offres : état au 26 octobre 2026
 
+## Five Rings — ajout vérifié le 16 novembre 2026
+
+Le connecteur Greenhouse existant collecte deux stages et quatre postes campus
+ou jeunes diplômés de trading quantitatif, recherche quantitative et Trading
+Assistant à New York, Londres et Amsterdam. La fiche Sources inclut le logo
+officiel et la date d'ajout du 16 novembre 2026. Voir les
+[preuves publiques et limites](SOURCES_FIVE_RINGS.md).
+
 ## DRW — ajout vérifié le 16 novembre 2026
 
 Le connecteur Greenhouse existant collecte cinq stages de trading quantitatif

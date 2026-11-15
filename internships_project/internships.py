@@ -34,6 +34,7 @@ SMARTRECRUITERS = {
     "Financeactive": "Finance Active",
 }
 GREENHOUSE = {
+    "fiveringsllc": "Five Rings",
     "drweng": "DRW",
     "mavensecuritiesholdingltd": "Maven Securities",
     "squarepointcapital": "Squarepoint Capital",
@@ -322,6 +323,7 @@ JOBTEASER_CITIES = {
 # Brand icons are requested from the employer's own site. If an icon is absent,
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
+    "fiverings": "fiverings.com",
     "drw": "www.drw.com",
     "fidelityinternational": "careers.fidelityinternational.com",
     "factset": "www.factset.com",
@@ -1241,18 +1243,25 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
         title = str(item.get("title") or "").strip()
         employment = ""
         offer_url = str(item.get("absolute_url") or "")
-        if slug in {"squarepointcapital", "drweng"}:
+        if slug in {"squarepointcapital", "drweng", "fiveringsllc"}:
             identity = str(item.get("id") or "")
             location = item.get("location")
             if (not re.fullmatch(r"[1-9][0-9]*", identity) or not title or not description
                     or not isinstance(location, dict) or not str(location.get("name") or "").strip()):
-                name = "Squarepoint" if slug == "squarepointcapital" else "DRW"
+                name = "Squarepoint" if slug == "squarepointcapital" else company
                 raise ValueError(f"Annonce publique {name} incomplète")
             if slug == "squarepointcapital" and re.search(r"\b(?:infrastructure|desktop|platform|retail)\b", title, re.I):
                 continue  # IT infrastructure and retail are outside desk roles.
             # Use the verified provider permalink for these employer sites,
             # rather than trusting an arbitrary URL supplied by a public row.
             offer_url = f"https://job-boards.greenhouse.io/{slug}/jobs/{identity}"
+        if slug == "fiveringsllc":
+            if re.search(r"\b(?:experienced|lateral|software|operations|engineer)\b", title, re.I):
+                continue
+            # The official campus-hire title explicitly identifies new graduates;
+            # retain that title and use the existing Graduate display category.
+            if re.fullmatch(r"Campus Full Time 20\d{2} - Quantitative Trader(?: - .+)?", title, re.I):
+                employment = "Graduate"
         if slug == "aqr":
             # AQR's summer BD programme also places interns in US Wealth.
             # Publish only the explicitly institutional, confirmed junior role.
@@ -1279,7 +1288,7 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
         if job:
             job = replace(job, description=description[:12_000], deadline=deadline)
             jobs.append(replace(job, source=f"Site carrière · Greenhouse · {company}"))
-    return _deduplicate_opportunities(jobs) if slug in {"squarepointcapital", "drweng"} else jobs
+    return _deduplicate_opportunities(jobs) if slug in {"squarepointcapital", "drweng", "fiveringsllc"} else jobs
 
 
 def _optiver_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
@@ -4522,12 +4531,13 @@ def _deduplicate_opportunities(jobs: list[Opportunity]) -> list[Opportunity]:
     for job in _without_jobteaser_duplicates(jobs):
         location_key = "paris-area" if _is_paris(job.location) else _canonical_location(job.location)
         # Identical role names can advertise separate internship, VIE or work-study contracts.
-        # FactSet and DRW publish distinct requisitions with identical titles/cohorts.
+        # These employers publish distinct requisitions with identical titles/cohorts.
         # A repeated requisition may collapse; different employer IDs must survive.
         requisition = (re.search(r"_(R\d+)(?:-\d+)?$", urlparse(job.url).path)
                        if _canonical_company(job.company) == "factset" else None)
-        if _canonical_company(job.company) == "drw":
-            requisition = re.fullmatch(r"/drweng/jobs/([1-9][0-9]*)/?", urlparse(job.url).path)
+        greenhouse_board = {"drw": "drweng", "fiverings": "fiveringsllc"}.get(_canonical_company(job.company))
+        if greenhouse_board:
+            requisition = re.fullmatch(rf"/{greenhouse_board}/jobs/([1-9][0-9]*)/?", urlparse(job.url).path)
         key = (_canonical_title(job.title), _canonical_company(job.company), location_key, job.kind,
                requisition[1] if requisition else "")
         grouped.setdefault(key, []).append(job)
