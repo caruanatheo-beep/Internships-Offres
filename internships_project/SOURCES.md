@@ -1,5 +1,12 @@
 # Sources d'offres : état au 26 octobre 2026
 
+## DRW — ajout vérifié le 16 novembre 2026
+
+Le connecteur Greenhouse existant collecte cinq stages de trading quantitatif
+et de recherche à Chicago, New York, Londres et Singapour. Les cinq fiches
+publiques ont été confirmées HTTP 200 ; la fiche Sources et le logo officiel
+sont inclus. Voir [les preuves et validations DRW](SOURCES_DRW.md).
+
 ## Maven Securities — ajout vérifié le 15 novembre 2026
 
 Maven, demandé dans la catégorie quant/market making, était absent des registres

@@ -38,13 +38,14 @@ ASSET_MANAGERS = {
     '21shares','WisdomTree','Amundi','Covéa Finance','Comgest','DNCA','Candriam','Groupama AM',
     'Schroders','La Française','Ofi Invest','Tikehau Capital','CFM',
 }
-TRADING = {'Akuna Capital', 'Da Vinci', 'Flow Traders', 'IMC Trading', 'Jane Street', 'Kepler Cheuvreux', 'Marex', 'Maven Securities', 'Optiver', 'Squarepoint Capital', 'Statkraft', 'Susquehanna', 'TP ICAP'}
+TRADING = {'DRW', 'Akuna Capital', 'Da Vinci', 'Flow Traders', 'IMC Trading', 'Jane Street', 'Kepler Cheuvreux', 'Marex', 'Maven Securities', 'Optiver', 'Squarepoint Capital', 'Statkraft', 'Susquehanna', 'TP ICAP'}
 OTHER = {'Finance Active','Banque de France','Business France','JobTeaser','AXA','Euronext'}
 CLIENT_SOLUTIONS = {'Bloomberg', 'FactSet'}
 
 # First live addition, not the collection date. Record new sources here;
 # leave the older baseline undated rather than inventing historical dates.
 SOURCE_ADDED_ON = {
+    'DRW': '2026-11-16',
     'Capital Group': '2026-11-15',
     'Maven Securities': '2026-11-15',
     'FactSet': '2026-11-15',
