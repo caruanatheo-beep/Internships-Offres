@@ -63,6 +63,7 @@ WORKDAY = {
     "OCBC Global Markets": ("ocbc.wd102.myworkdayjobs.com", "ocbc", "External"),
 }
 CAREER_PORTALS = {
+    "Susquehanna": "https://careers.sig.com/institutional-sales/jobs",
     "Pictet Asset Management": "https://career5.successfactors.eu/career?company=banquepict",
     "BBVA": "https://bbva.wd3.myworkdayjobs.com/en-US/BBVA",
     "ING": "https://careers.ing.com/en",
@@ -1006,7 +1007,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "www.dnca-investments.com", "jobs.ubs.com", "www.optiver.com",
         "jobs.candriam.com", "eofe.fa.us2.oraclecloud.com",
         "jobs.commerzbank.com", "jobs.standardchartered.com", "apply.careers.hsbc.com",
-        "www.akunacapital.com", "akunacapital.com",
+        "www.akunacapital.com", "akunacapital.com", "careers.sig.com",
         *(board[0] for board in WORKDAY.values()),
     }
     try:
@@ -2265,6 +2266,81 @@ class _PartialSourceError(ValueError):
         self.jobs = jobs
         self.failed_urls = set(failed_urls)
         self.preserve_cached = bool(search_failures)
+
+
+def _susquehanna_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
+    """Read worldwide institutional Sales vacancies, then verify employer pages."""
+    endpoint = "https://careers.sig.com/api/jobs"
+    candidates: dict[str, str] = {}
+    seen: set[str] = set()
+    received = 0
+    search_failures = 0
+    today = datetime.now(timezone.utc).date().isoformat()
+    for page in range(1, 21):
+        try:
+            response = requests.get(endpoint, params={"tags1": "Institutional Sales", "page": page, "limit": 20},
+                                    timeout=(8, 20), allow_redirects=False)
+            response.raise_for_status()
+            if response.status_code != 200:
+                raise ValueError("Redirection du catalogue Susquehanna")
+            payload = response.json()
+            if (not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list)
+                    or type(payload.get("totalCount")) is not int or payload["totalCount"] < 0):
+                raise ValueError("Catalogue public Susquehanna invalide")
+            rows = payload["jobs"]
+            before = len(seen)
+            for row in rows:
+                item = row.get("data") if isinstance(row, dict) else None
+                if not isinstance(item, dict) or not re.fullmatch(r"[0-9]+", str(item.get("slug") or "")):
+                    raise ValueError("Annonce publique Susquehanna invalide")
+                identity = str(item["slug"])
+                seen.add(identity)
+                title = str(item.get("title") or "")
+                if item.get("applyable") is False or item.get("searchable") is False:
+                    continue
+                expiry = str(item.get("posting_expiry_date") or "")[:10]
+                try:
+                    if expiry and date.fromisoformat(expiry).isoformat() < today:
+                        continue
+                except ValueError:
+                    pass
+                if _kind(title) and _market_candidate(title):
+                    # Never follow canonical/apply URLs supplied by the feed.
+                    candidates[identity] = title
+            received += len(rows)
+            if (rows and len(seen) == before) or (not rows and received < payload["totalCount"]):
+                raise ValueError("Pagination Susquehanna sans progression")
+            if received >= payload["totalCount"]:
+                break
+        except (requests.RequestException, ValueError, TypeError):
+            search_failures += 1
+            break
+    else:
+        search_failures += 1
+
+    found: list[Opportunity] = []
+    failed: list[str] = []
+    for identity, title in candidates.items():
+        url = f"https://careers.sig.com/jobs/{identity}?lang=en-us"
+        try:
+            response = requests.get(url, timeout=(8, 20), allow_redirects=False)
+            response.raise_for_status()
+            if response.status_code != 200:
+                raise ValueError("Redirection de la fiche Susquehanna")
+            posting = _jsonld_jobposting(response.text)
+            if not posting or _canonical_title(str(posting.get("title") or "")) != _canonical_title(title):
+                raise ValueError("Fiche Susquehanna sans annonce correspondante")
+            job = _career_detail(url, "Susquehanna", html_override=response.text)
+            if job:
+                description = _plain_text(str(posting.get("description") or ""))
+                found.append(replace(job, description=description[:12_000],
+                                     start_period=_structured_job_start(posting) or _start_period(description)
+                                     or _title_period(job.title)))
+        except (requests.RequestException, ValueError, TypeError):
+            failed.append(url)
+    if failed or search_failures:
+        raise _PartialSourceError(found, failed, search_failures=search_failures)
+    return found
 
 
 def _dnca_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
@@ -3817,6 +3893,7 @@ def _opportunity_source_tasks() -> list[tuple[str, object, tuple]]:
         tasks.append((company, _ashby_jobs, (slug, company)))
     tasks.extend([
         ("Optiver", _optiver_jobs, ("", "")),
+        ("Susquehanna", _susquehanna_jobs, ("", "")),
         ("UBS", _ubs_jobs, ("", "")),
         ("Pictet Asset Management", _pictet_jobs, ()),
         ("Soci\u00e9t\u00e9 G\u00e9n\u00e9rale Careers", _socgen_jobs, ("", "")),

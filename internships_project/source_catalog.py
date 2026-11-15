@@ -34,12 +34,13 @@ ASSET_MANAGERS = {
     '21shares','WisdomTree','Amundi','Covéa Finance','Comgest','DNCA','Candriam','Groupama AM',
     'Schroders','La Française','Ofi Invest','Tikehau Capital','CFM',
 }
-TRADING = {'Akuna Capital','Jane Street','IMC Trading','Flow Traders','Da Vinci','Optiver','Statkraft','Marex','Kepler Cheuvreux'}
+TRADING = {'Akuna Capital','Jane Street','IMC Trading','Flow Traders','Da Vinci','Optiver','Statkraft','Marex','Kepler Cheuvreux','Susquehanna'}
 OTHER = {'Finance Active','Banque de France','Business France','JobTeaser','AXA','Euronext'}
 
 # First live addition, not the collection date. Record new sources here;
 # leave the older baseline undated rather than inventing historical dates.
 SOURCE_ADDED_ON = {
+    'Susquehanna': '2026-11-15',
     'Akuna Capital': '2026-11-15',
     'Candriam': '2026-11-12',
     'BNY': '2026-11-12',
