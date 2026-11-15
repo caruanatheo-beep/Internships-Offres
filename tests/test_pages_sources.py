@@ -171,9 +171,11 @@ def test_announcement_works_without_browser_storage_on_mobile(sources_screen):
 @pytest.mark.parametrize('now,recent', [
     ('2026-11-14T12:00:00Z', True),
     ('2026-11-15T22:30:00Z', True),
-    ('2026-11-15T23:30:00Z', False),  # Monday in Paris, still Sunday in UTC.
+    ('2026-11-15T23:30:00Z', True),  # Monday retains recent additions.
+    ('2026-11-18T22:30:00Z', True),
+    ('2026-11-18T23:30:00Z', False),  # Seven Paris dates, even while UTC is one day behind.
 ])
-def test_weekly_additions_use_paris_week_and_keep_filters(sources_screen, now, recent):
+def test_recent_additions_use_last_seven_paris_dates_and_keep_filters(sources_screen, now, recent):
     page, calls, state = sources_screen
     state['candriam_added'] = '2026-11-12'
     page.add_init_script('''{
@@ -189,8 +191,10 @@ def test_weekly_additions_use_paris_week_and_keep_filters(sources_screen, now, r
     assert cards.first.locator('h3').inner_text() == ('Candriam' if recent else 'BNP Paribas')
     assert page.locator('.source-group-title').count() == (2 if recent else 0)
     if recent:
-        expect(page.locator('.source-group-title').first).to_contain_text('Ajoutées cette semaine')
+        expect(page.locator('.source-group-title').first).to_contain_text('Ajoutées ces 7 derniers jours')
         assert cards.first.bounding_box()['height'] == cards.last.bounding_box()['height']
+        page.set_viewport_size({'width':390,'height':844})
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.locator('#source-search').fill('bnp')
     assert cards.count() == 1 and page.locator('.source-group-title').count() == 0
     assert not calls
