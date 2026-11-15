@@ -40,13 +40,14 @@ ASSET_MANAGERS = {
 }
 TRADING = {'Maven Securities','TP ICAP','Akuna Capital','Jane Street','IMC Trading','Flow Traders','Da Vinci','Optiver','Statkraft','Marex','Kepler Cheuvreux','Susquehanna'}
 OTHER = {'Finance Active','Banque de France','Business France','JobTeaser','AXA','Euronext'}
-CLIENT_SOLUTIONS = {'Bloomberg'}
+CLIENT_SOLUTIONS = {'Bloomberg', 'FactSet'}
 
 # First live addition, not the collection date. Record new sources here;
 # leave the older baseline undated rather than inventing historical dates.
 SOURCE_ADDED_ON = {
     'Capital Group': '2026-11-15',
     'Maven Securities': '2026-11-15',
+    'FactSet': '2026-11-15',
     'TP ICAP': '2026-11-15',
     'Morgan Stanley': '2026-11-15',
     'Bank of America': '2026-11-15',

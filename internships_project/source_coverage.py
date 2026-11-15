@@ -14,6 +14,7 @@ class SourceCoverage:
 
 SOURCE_COVERAGE: dict[str, SourceCoverage] = {
     "Capital Group": SourceCoverage("connected", "https://capgroup.wd1.myworkdayjobs.com/en-US/capitalgroupcareers", "Official careers page links this public Workday board; complete global pagination and verified requisition details; no HTML fallback"),
+    "FactSet": SourceCoverage("connected", "https://factset.wd108.myworkdayjobs.com/en-US/FactSetCareers", "Official career page links the public Workday CXS board; live details required; no HTML fallback"),
     # Banks
     "BNP Paribas": SourceCoverage("connected", "https://group.bnpparibas/emploi-carriere/toutes-offres-emploi/stage/france", "Public Playwright collector in graphical Chromium; requires an interactive desktop"),
     "Société Générale": SourceCoverage("connected", "https://careers.societegenerale.com/en/Technical/all-job-offers", "Global English job index and direct public offer pages; includes international locations"),

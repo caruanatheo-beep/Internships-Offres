@@ -50,6 +50,7 @@ LEVER = {
 }
 ASHBY = {}
 WORKDAY = {
+    "FactSet": ("factset.wd108.myworkdayjobs.com", "factset", "FactSetCareers"),
     "Capital Group": ("capgroup.wd1.myworkdayjobs.com", "capgroup", "capitalgroupcareers"),
     "TP ICAP": ("tp.wd107.myworkdayjobs.com", "tp", "TP-ICAP"),
     "Citi": ("citi.wd5.myworkdayjobs.com", "citi", "2"),
@@ -316,6 +317,7 @@ JOBTEASER_CITIES = {
 # Brand icons are requested from the employer's own site. If an icon is absent,
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
+    "factset": "www.factset.com",
     "capitalgroup": "www.capitalgroup.com",
     "mavensecurities": "www.mavensecurities.com",
     "tpicap": "tpicap.com",
@@ -659,8 +661,8 @@ def _title_period(title: str) -> str:
         last = abbreviations.get(interval[2].casefold(), interval[2])
         year = int(interval[3]) - int(_MONTH_ALIASES[first.casefold()] > _MONTH_ALIASES[last.casefold()])
         return f"{first} {year}"
-    match = re.search(rf"\b(?:{_MONTH})\s+\d{{4}}\b", title, re.IGNORECASE)
-    return match.group(0) if match else ""
+    match = re.search(rf"\b({month_pattern})\.?\s+(20\d{{2}})\b", title, re.IGNORECASE)
+    return f"{abbreviations.get(match[1].casefold(), match[1])} {match[2]}" if match else ""
 
 
 def _recovered_start_period(job: Opportunity) -> str:
@@ -1061,15 +1063,38 @@ def _tp_icap_kind(title: str, employment: str = "", context: str = "") -> str | 
     return _kind(title, employment)
 
 
+def _factset_client_solutions(title: str) -> bool:
+    return bool(re.search(r"\bclient solutions\b", title, re.I)) and not re.search(
+        r"\b(?:senior|sr|manager|director|head|lead|engineer)\b", title, re.I)
+
+
+def _factset_kind(title: str, employment: str = "", context: str = "") -> str | None:
+    if _experienced_junior(context):
+        return None
+    kind = _kind(title, employment)
+    if kind:
+        return kind
+    if (_factset_client_solutions(title) and re.search(r"\bassociate\b", title, re.I)
+            and re.search(r"\b(?:entry[ -]level|recent graduates?|"
+                          r"6[ -]month long foundational training program)\b", context, re.I)):
+        return "Graduate"
+    return None
+
+
 def _opportunity(title: str, company: str, location: str, employment: str,
                  url: str, published: str, start_period: str = "",
                  role_context: str = "", *, defer_junior_context: bool = False) -> Opportunity | None:
     title = title.strip()
     location = _clean_job_location(location, title)
     kind = (_tp_icap_kind(title, employment, role_context) if company == "TP ICAP" else
+            _factset_kind(title, employment, role_context) if company == "FactSet" else
             _morgan_stanley_kind(title, employment, role_context)
             if company == "Morgan Stanley" else _kind(title, employment))
     market = _market_relevant_with_context(title, role_context)
+    if company == "FactSet" and _factset_client_solutions(title):
+        market = True
+        if defer_junior_context and not role_context and re.search(r"\bassociate\b", title, re.I):
+            kind = kind or "Graduate"  # Candidate only; the live detail must confirm early careers.
     pending_junior = defer_junior_context and not role_context and _junior_analyst(title) and _market_candidate(title)
     if (not kind or not (market or pending_junior) or _excluded_employer(company) or not _plausible_location(location)
             or kind == "Graduate" and _junior_analyst(title) and _experienced_junior(role_context)):
@@ -1083,7 +1108,8 @@ def _opportunity(title: str, company: str, location: str, employment: str,
     ))
     score = (100 if paris and kind == "Stage" else 70 if paris else 45) + (15 if market_focus else 0)
     return Opportunity(title, company, location, kind, url, published[:10], score, start_period,
-                       _family(title, role_context), "", datetime.now(timezone.utc).date().isoformat(), employment=employment)
+                       "Client Service / Financial Solutions" if company == "FactSet" and _factset_client_solutions(title)
+                       else _family(title, role_context), "", datetime.now(timezone.utc).date().isoformat(), employment=employment)
 
 
 def is_trusted_offer_url(url: str) -> bool:
@@ -3662,7 +3688,7 @@ def _pictet_jobs() -> list[Opportunity]:
 
 
 def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) -> list[Opportunity]:
-    verified_feed = company in {"TP ICAP", "Capital Group"}
+    verified_feed = company in {"TP ICAP", "Capital Group", "FactSet"}
     if company == "BBVA" and _client is None:
         # Reuse one connection: repeated parallel TLS connections to BBVA time out.
         with requests.Session() as session:
@@ -3816,7 +3842,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 revised = _opportunity(str(info["title"]), company, location,
                     str(info.get("timeType") or ""), job.url,
                     _workday_publication_date(info.get("startDate"), info.get("postedOn")),
-                    _start_period(description), role_context=_plain_text(description))
+                    _start_period(description) or _title_period(str(info["title"])), role_context=_plain_text(description))
                 if not revised:
                     return None
                 deadline = str(info.get("validThrough") or "")[:10]
@@ -3830,7 +3856,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 program = re.search(r"Program(?:me)? dates?:\s*(?:\w+,\s*)?"
                     r"([A-Z][a-z]+)\s+(\d{1,2})\s*[-–—]\s*(?:\w+,\s*)?"
                     r"[A-Z][a-z]+\s+\d{1,2},?\s+(20\d{2})", _plain_text(description))
-                if not start and program:
+                if company == "TP ICAP" and not start and program:
                     try:
                         start = datetime.strptime(f"{program[1]} {program[2]} {program[3]}", "%B %d %Y").date().isoformat()
                     except ValueError:
@@ -3886,8 +3912,8 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
             return job
 
     selected = dict(sorted(candidates.items(), key=lambda pair: -pair[1].score)[:50])
-    if company == "Capital Group":
-        selected = dict(candidates)  # Every published offer needs a verified detail.
+    if company in {"Capital Group", "FactSet"}:
+        selected = dict(candidates)  # Every offer needs a verified live detail.
     selected.update((path, job) for path, job in candidates.items() if _junior_analyst(job.title))
     selected = list(selected.items())
     with ThreadPoolExecutor(max_workers=1 if company == "BBVA" else 6) as pool:
@@ -4397,6 +4423,7 @@ def _eligible_offer(job: Opportunity) -> bool:
         pass
     if job.employment is not None:
         kind = (_tp_icap_kind(job.title, job.employment, job.description) if job.company == "TP ICAP" else
+                _factset_kind(job.title, job.employment, job.description) if job.company == "FactSet" else
                 _morgan_stanley_kind(job.title, job.employment, job.description)
                 if job.company == "Morgan Stanley" else _kind(job.title, job.employment))
         if kind != job.kind:
@@ -4409,7 +4436,8 @@ def _eligible_offer(job: Opportunity) -> bool:
         return False
     return (not _excluded_employer(job.company)
             and not (job.kind == "Graduate" and _junior_analyst(job.title) and _experienced_junior(job.description))
-            and _market_relevant_with_context(job.title, job.description)
+            and (_market_relevant_with_context(job.title, job.description)
+                 or job.company == "FactSet" and _factset_client_solutions(job.title))
             and (job.source == "JobTeaser · sitemap" or _plausible_location(job.location)))
 
 
@@ -4418,11 +4446,16 @@ def _deduplicate_opportunities(jobs: list[Opportunity]) -> list[Opportunity]:
     # a rejected employer result can suppress the only offer we can display.
     jobs = [replace(job, location=_clean_job_location(job.location, job.title)) for job in jobs]
     jobs = [job for job in jobs if _eligible_offer(job)]
-    grouped: dict[tuple[str, str, str, str], list[Opportunity]] = {}
+    grouped: dict[tuple[str, str, str, str, str], list[Opportunity]] = {}
     for job in _without_jobteaser_duplicates(jobs):
         location_key = "paris-area" if _is_paris(job.location) else _canonical_location(job.location)
         # Identical role names can advertise separate internship, VIE or work-study contracts.
-        key = (_canonical_title(job.title), _canonical_company(job.company), location_key, job.kind)
+        # FactSet publishes distinct requisitions with identical titles/cohorts.
+        # A repeated requisition may collapse; different employer IDs must survive.
+        requisition = (re.search(r"_(R\d+)(?:-\d+)?$", urlparse(job.url).path)
+                       if _canonical_company(job.company) == "factset" else None)
+        key = (_canonical_title(job.title), _canonical_company(job.company), location_key, job.kind,
+               requisition[1] if requisition else "")
         grouped.setdefault(key, []).append(job)
     deduplicated: list[Opportunity] = []
     for group in grouped.values():
