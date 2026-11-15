@@ -49,6 +49,7 @@ LEVER = {
 }
 ASHBY = {}
 WORKDAY = {
+    "Capital Group": ("capgroup.wd1.myworkdayjobs.com", "capgroup", "capitalgroupcareers"),
     "TP ICAP": ("tp.wd107.myworkdayjobs.com", "tp", "TP-ICAP"),
     "Citi": ("citi.wd5.myworkdayjobs.com", "citi", "2"),
     "NatWest Markets": ("rbs.wd3.myworkdayjobs.com", "rbs", "RBS"),
@@ -314,6 +315,7 @@ JOBTEASER_CITIES = {
 # Brand icons are requested from the employer's own site. If an icon is absent,
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
+    "capitalgroup": "www.capitalgroup.com",
     "tpicap": "tpicap.com",
     "morganstanley": "www.morganstanley.com",
     "bankofamerica": "careers.bankofamerica.com",
@@ -3634,6 +3636,7 @@ def _pictet_jobs() -> list[Opportunity]:
 
 
 def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) -> list[Opportunity]:
+    verified_feed = company in {"TP ICAP", "Capital Group"}
     if company == "BBVA" and _client is None:
         # Reuse one connection: repeated parallel TLS connections to BBVA time out.
         with requests.Session() as session:
@@ -3643,7 +3646,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
     base = f"https://{host}/wday/cxs/{tenant}/{site}"
 
     def listing(term: str, offset: int, facets: dict) -> dict:
-        attempts = 1 if company == "TP ICAP" else 3
+        attempts = 1 if verified_feed else 3
         for attempt in range(attempts):
             try:
                 with _workday_requests:
@@ -3665,7 +3668,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                     raise ValueError(f'Workday : réponse non JSON après {attempts} tentative(s)') from exc
                 if not isinstance(payload, dict) or not isinstance(payload.get("jobPostings"), list):
                     raise ValueError("Catalogue Workday invalide")
-                if company == "TP ICAP" and (type(payload.get("total")) is not int or payload["total"] < 0):
+                if verified_feed and (type(payload.get("total")) is not int or payload["total"] < 0):
                     raise ValueError("Total Workday indisponible")
                 return payload
             except (requests.Timeout, requests.ConnectionError):
@@ -3717,14 +3720,14 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
             total = max(total, int(payload.get("total") or 0))
             if company == "Citi" and total >= 2000:
                 return found, ValueError("Catégorie Citi plafonnée : collecte incomplète")
-            if company == "TP ICAP" and any(not isinstance(item, dict) for item in rows):
+            if verified_feed and any(not isinstance(item, dict) for item in rows):
                 return found, ValueError("Annonce Workday invalide")
             signature = tuple(str(item.get("externalPath") or "") for item in rows)
             if rows and signature in seen_pages:
                 return found, ValueError("Pagination Workday répétée")
             seen_pages.add(signature)
             for item in rows:
-                if company == "TP ICAP" and (not isinstance(item, dict)
+                if verified_feed and (not isinstance(item, dict)
                         or not item.get("title") or not str(item.get("externalPath") or "").startswith("/job/")):
                     return found, ValueError("Annonce Workday incomplète")
                 path = str(item.get("externalPath") or "")
@@ -3742,7 +3745,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 )
                 if job:
                     found.append((path, replace(job, source=f"Workday {company}")))
-            if company == "TP ICAP" and len(rows) < 20 and offset + len(rows) < total:
+            if verified_feed and len(rows) < 20 and offset + len(rows) < total:
                 return found, ValueError("Pagination Workday incomplète")
             if len(rows) < 20 or total and offset + len(rows) >= total:
                 break
@@ -3763,7 +3766,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
     failed_details: list[str] = []
     def enrich(pair: tuple[str, Opportunity]) -> Opportunity | None:
         path, job = pair
-        reused = None if company == "TP ICAP" else _cached_detail(job)
+        reused = None if verified_feed else _cached_detail(job)
         if reused and reused.description and _display_offer_location(reused.location) != "Non précisé":
             return replace(reused, source=f"Workday career site · {company}")
         try:
@@ -3772,7 +3775,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 return None
             response.raise_for_status()
             detail = response.json()
-            if company == "TP ICAP" and (not isinstance(detail, dict)
+            if verified_feed and (not isinstance(detail, dict)
                     or not isinstance(detail.get("jobPostingInfo"), dict)):
                 raise ValueError("Fiche Workday invalide")
             info = detail.get("jobPostingInfo") or {}
@@ -3780,7 +3783,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 return None
             description = str(info.get("jobDescription") or "")
             location = str(info.get("location") or job.location)
-            if company == "TP ICAP":
+            if verified_feed:
                 if (info.get("canApply") is not True or not info.get("title")
                         or not description or not info.get("location")):
                     raise ValueError("Fiche Workday incomplète")
@@ -3851,12 +3854,14 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 source=f"Workday career site · {detail_company}",
             )
         except (requests.RequestException, ValueError, TypeError):
-            if company == "TP ICAP" or _junior_analyst(job.title):
+            if verified_feed or _junior_analyst(job.title):
                 failed_details.append(job.url)
                 return None
             return job
 
     selected = dict(sorted(candidates.items(), key=lambda pair: -pair[1].score)[:50])
+    if company == "Capital Group":
+        selected = dict(candidates)  # Every published offer needs a verified detail.
     selected.update((path, job) for path, job in candidates.items() if _junior_analyst(job.title))
     selected = list(selected.items())
     with ThreadPoolExecutor(max_workers=1 if company == "BBVA" else 6) as pool:

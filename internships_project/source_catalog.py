@@ -31,6 +31,7 @@ EXTRA_URLS = {
     'AXA':"https://recrutement.axa.fr/recherche-d%27offres",
 }
 ASSET_MANAGERS = {
+    'Capital Group',
     'AQR Capital Management',
     'Pictet Asset Management',
     'Sienna Investment Managers','Sycomore Asset Management','Point72','Qube Research & Technologies',
@@ -44,6 +45,7 @@ CLIENT_SOLUTIONS = {'Bloomberg'}
 # First live addition, not the collection date. Record new sources here;
 # leave the older baseline undated rather than inventing historical dates.
 SOURCE_ADDED_ON = {
+    'Capital Group': '2026-11-15',
     'TP ICAP': '2026-11-15',
     'Morgan Stanley': '2026-11-15',
     'Bank of America': '2026-11-15',
