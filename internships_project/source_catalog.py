@@ -7,6 +7,7 @@ from .public_safety import public_job_url
 
 
 GROUPS = {
+    'Tullett Prebon':'TP ICAP', 'ICAP':'TP ICAP', 'Liquidnet':'TP ICAP', 'Louis Capital Markets':'TP ICAP',
     'Société Générale Careers':'Société Générale',
     'Amundi · portail groupe':'Amundi',
     'BPCE Open Data':'BPCE / Natixis / BRED',
@@ -36,13 +37,14 @@ ASSET_MANAGERS = {
     '21shares','WisdomTree','Amundi','Covéa Finance','Comgest','DNCA','Candriam','Groupama AM',
     'Schroders','La Française','Ofi Invest','Tikehau Capital','CFM',
 }
-TRADING = {'Akuna Capital','Jane Street','IMC Trading','Flow Traders','Da Vinci','Optiver','Statkraft','Marex','Kepler Cheuvreux','Susquehanna'}
+TRADING = {'TP ICAP','Akuna Capital','Jane Street','IMC Trading','Flow Traders','Da Vinci','Optiver','Statkraft','Marex','Kepler Cheuvreux','Susquehanna'}
 OTHER = {'Finance Active','Banque de France','Business France','JobTeaser','AXA','Euronext'}
 CLIENT_SOLUTIONS = {'Bloomberg'}
 
 # First live addition, not the collection date. Record new sources here;
 # leave the older baseline undated rather than inventing historical dates.
 SOURCE_ADDED_ON = {
+    'TP ICAP': '2026-11-15',
     'Morgan Stanley': '2026-11-15',
     'Bank of America': '2026-11-15',
     'Bloomberg': '2026-11-15',

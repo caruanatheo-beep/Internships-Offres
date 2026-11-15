@@ -11,7 +11,7 @@ def test_catalog_exactly_covers_active_collectors_and_groups_related_portals():
     assert len(feeds)==len(set(feeds))
     assert len(catalog)<len(feeds)
     assert {'Commerzbank','Standard Chartered','Candriam','BNY'} <= {source['name'] for source in catalog}
-    assert not any('Palatine' in source['name'] or source['name']=='TP ICAP' for source in catalog)
+    assert not any('Palatine' in source['name'] for source in catalog)
     bnp=next(source for source in catalog if source['name']=='BNP Paribas')
     assert len(bnp['feeds'])>=4
     assert next(source for source in catalog if source['name']=='Candriam')['category']=='Gestion d’actifs'

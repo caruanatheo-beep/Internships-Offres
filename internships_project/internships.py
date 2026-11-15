@@ -49,6 +49,7 @@ LEVER = {
 }
 ASHBY = {}
 WORKDAY = {
+    "TP ICAP": ("tp.wd107.myworkdayjobs.com", "tp", "TP-ICAP"),
     "Citi": ("citi.wd5.myworkdayjobs.com", "citi", "2"),
     "NatWest Markets": ("rbs.wd3.myworkdayjobs.com", "rbs", "RBS"),
     "BBVA": ("bbva.wd3.myworkdayjobs.com", "bbva", "BBVA"),
@@ -313,6 +314,7 @@ JOBTEASER_CITIES = {
 # Brand icons are requested from the employer's own site. If an icon is absent,
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
+    "tpicap": "tpicap.com",
     "morganstanley": "www.morganstanley.com",
     "bankofamerica": "careers.bankofamerica.com",
     "bloomberg": "bloomberg.avature.net",
@@ -560,11 +562,12 @@ def _canonical_company(company: str) -> str:
     text = "".join(char for char in text if not unicodedata.combining(char))
     compact = re.sub(r"\W+", "", text)
     for variants, canonical in (
+        (("tpicap", "tullettprebon", "icap", "liquidnet", "louiscapitalmarkets"), "tpicap"),
         (("bnpparibasassetmanagement", "bnpparibasam"), "bnpparibasam"),
         (("bnpparibascib", "bnpparibas"), "bnpparibas"),
         (("societegenerale", "societegenerale4"), "societegenerale"),
         (("creditagricolecib", "cacib"), "creditagricolecib"),
-        (("ostrumassetmanagement", "ostrum"), "ostrum"),
+        (("ostrumassetmanagement", "ostrumam", "ostrum"), "ostrum"),
         (("cprassetmanagement", "cpram"), "cpram"),
         (("amundiassetmanagement", "amundi"), "amundi"),
         (("bftinvestmentmanagers", "bftim"), "bftim"),
@@ -1028,12 +1031,24 @@ def _morgan_stanley_kind(title: str, employment: str, description: str) -> str |
     return None
 
 
+def _tp_icap_kind(title: str, employment: str = "", context: str = "") -> str | None:
+    """Keep institutional brokerage early careers separate from group support roles."""
+    if (not re.search(r"\b(?:sales|brokers?|broking)\b", title, re.I)
+            or re.search(r"\b(?:senior|manager|director|head|retail|corporate|operations|support|gas|power)\b", title, re.I)
+            or _experienced_junior(context)):
+        return None
+    if re.search(r"\b(?:junior|trainee)\s+broker\b|\bbroker\s+trainee\b", title, re.I):
+        return "Graduate"
+    return _kind(title, employment)
+
+
 def _opportunity(title: str, company: str, location: str, employment: str,
                  url: str, published: str, start_period: str = "",
                  role_context: str = "", *, defer_junior_context: bool = False) -> Opportunity | None:
     title = title.strip()
     location = _clean_job_location(location, title)
-    kind = (_morgan_stanley_kind(title, employment, role_context)
+    kind = (_tp_icap_kind(title, employment, role_context) if company == "TP ICAP" else
+            _morgan_stanley_kind(title, employment, role_context)
             if company == "Morgan Stanley" else _kind(title, employment))
     market = _market_relevant_with_context(title, role_context)
     pending_junior = defer_junior_context and not role_context and _junior_analyst(title) and _market_candidate(title)
@@ -3628,7 +3643,8 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
     base = f"https://{host}/wday/cxs/{tenant}/{site}"
 
     def listing(term: str, offset: int, facets: dict) -> dict:
-        for attempt in range(3):
+        attempts = 1 if company == "TP ICAP" else 3
+        for attempt in range(attempts):
             try:
                 with _workday_requests:
                     response = client.post(
@@ -3636,22 +3652,24 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                         json={"appliedFacets": facets, "limit": 20, "offset": offset, "searchText": term},
                         timeout=(8, 25),
                     )
-                if getattr(response, 'status_code', 200) in (429, 500, 502, 503, 504) and attempt < 2:
+                if getattr(response, 'status_code', 200) in (429, 500, 502, 503, 504) and attempt < attempts - 1:
                     time.sleep(attempt + 1)
                     continue
                 response.raise_for_status()
                 try:
                     payload = response.json()
                 except ValueError as exc:
-                    if attempt < 2:
+                    if attempt < attempts - 1:
                         time.sleep(attempt + 1)
                         continue
-                    raise ValueError('Workday : réponse non JSON après trois tentatives') from exc
+                    raise ValueError(f'Workday : réponse non JSON après {attempts} tentative(s)') from exc
                 if not isinstance(payload, dict) or not isinstance(payload.get("jobPostings"), list):
                     raise ValueError("Catalogue Workday invalide")
+                if company == "TP ICAP" and (type(payload.get("total")) is not int or payload["total"] < 0):
+                    raise ValueError("Total Workday indisponible")
                 return payload
             except (requests.Timeout, requests.ConnectionError):
-                if attempt == 2:
+                if attempt == attempts - 1:
                     raise
                 time.sleep(attempt + 1)
 
@@ -3699,11 +3717,16 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
             total = max(total, int(payload.get("total") or 0))
             if company == "Citi" and total >= 2000:
                 return found, ValueError("Catégorie Citi plafonnée : collecte incomplète")
+            if company == "TP ICAP" and any(not isinstance(item, dict) for item in rows):
+                return found, ValueError("Annonce Workday invalide")
             signature = tuple(str(item.get("externalPath") or "") for item in rows)
             if rows and signature in seen_pages:
                 return found, ValueError("Pagination Workday répétée")
             seen_pages.add(signature)
             for item in rows:
+                if company == "TP ICAP" and (not isinstance(item, dict)
+                        or not item.get("title") or not str(item.get("externalPath") or "").startswith("/job/")):
+                    return found, ValueError("Annonce Workday incomplète")
                 path = str(item.get("externalPath") or "")
                 if not path.startswith("/job/"):
                     continue
@@ -3719,6 +3742,8 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 )
                 if job:
                     found.append((path, replace(job, source=f"Workday {company}")))
+            if company == "TP ICAP" and len(rows) < 20 and offset + len(rows) < total:
+                return found, ValueError("Pagination Workday incomplète")
             if len(rows) < 20 or total and offset + len(rows) >= total:
                 break
         else:
@@ -3738,7 +3763,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
     failed_details: list[str] = []
     def enrich(pair: tuple[str, Opportunity]) -> Opportunity | None:
         path, job = pair
-        reused = _cached_detail(job)
+        reused = None if company == "TP ICAP" else _cached_detail(job)
         if reused and reused.description and _display_offer_location(reused.location) != "Non précisé":
             return replace(reused, source=f"Workday career site · {company}")
         try:
@@ -3746,11 +3771,44 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
             if getattr(response, "status_code", 200) in (404, 410):
                 return None
             response.raise_for_status()
-            info = response.json().get("jobPostingInfo") or {}
+            detail = response.json()
+            if company == "TP ICAP" and (not isinstance(detail, dict)
+                    or not isinstance(detail.get("jobPostingInfo"), dict)):
+                raise ValueError("Fiche Workday invalide")
+            info = detail.get("jobPostingInfo") or {}
             if info.get("canApply") is False:
                 return None
             description = str(info.get("jobDescription") or "")
             location = str(info.get("location") or job.location)
+            if company == "TP ICAP":
+                if (info.get("canApply") is not True or not info.get("title")
+                        or not description or not info.get("location")):
+                    raise ValueError("Fiche Workday incomplète")
+                revised = _opportunity(str(info["title"]), company, location,
+                    str(info.get("timeType") or ""), job.url,
+                    _workday_publication_date(info.get("startDate"), info.get("postedOn")),
+                    _start_period(description), role_context=_plain_text(description))
+                if not revised:
+                    return None
+                deadline = str(info.get("validThrough") or "")[:10]
+                try:
+                    deadline = date.fromisoformat(deadline).isoformat()
+                except ValueError:
+                    deadline = ""
+                # Workday startDate is the publication date; the programme dates
+                # below are explicit employer text, never inferred from graduation.
+                start = revised.start_period
+                program = re.search(r"Program(?:me)? dates?:\s*(?:\w+,\s*)?"
+                    r"([A-Z][a-z]+)\s+(\d{1,2})\s*[-–—]\s*(?:\w+,\s*)?"
+                    r"[A-Z][a-z]+\s+\d{1,2},?\s+(20\d{2})", _plain_text(description))
+                if not start and program:
+                    try:
+                        start = datetime.strptime(f"{program[1]} {program[2]} {program[3]}", "%B %d %Y").date().isoformat()
+                    except ValueError:
+                        pass
+                return replace(revised, start_period=start, deadline=deadline,
+                    family="Sales" if re.search(r"\bbroker(?:ing|s)?\b|\bbroking\b", revised.title, re.I) else revised.family,
+                    description=_plain_text(description)[:12_000], source=f"Workday career site · {company}")
             if _display_offer_location(location) == "Non précisé":
                 # Require a title city, an explicit workplace statement and a matching country.
                 country = _LOCATION_COUNTRY_NAMES.get(_offer_search_text(
@@ -3793,7 +3851,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 source=f"Workday career site · {detail_company}",
             )
         except (requests.RequestException, ValueError, TypeError):
-            if _junior_analyst(job.title):
+            if company == "TP ICAP" or _junior_analyst(job.title):
                 failed_details.append(job.url)
                 return None
             return job
@@ -4307,7 +4365,8 @@ def _eligible_offer(job: Opportunity) -> bool:
     except ValueError:
         pass
     if job.employment is not None:
-        kind = (_morgan_stanley_kind(job.title, job.employment, job.description)
+        kind = (_tp_icap_kind(job.title, job.employment, job.description) if job.company == "TP ICAP" else
+                _morgan_stanley_kind(job.title, job.employment, job.description)
                 if job.company == "Morgan Stanley" else _kind(job.title, job.employment))
         if kind != job.kind:
             return False
