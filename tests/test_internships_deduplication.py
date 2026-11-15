@@ -216,6 +216,29 @@ class DeduplicationTests(unittest.TestCase):
                 self.assertCountEqual(_deduplicate_opportunities(ordered),
                                       [self.offer, vie])
 
+    def test_jobteaser_matching_skips_unrelated_employers_and_contracts(self):
+        teaser = replace(self.offer, source="JobTeaser ?? sitemap",
+                         url="https://example.invalid/teaser")
+        unrelated = [
+            replace(self.offer, company=f"Synthetic Bank {index}",
+                    url=f"https://example.invalid/{index}")
+            for index in range(100)
+        ]
+        unrelated.append(replace(self.offer, kind="VIE",
+                                 url="https://example.invalid/vie"))
+        original = internships.SequenceMatcher
+        compared = []
+
+        def counted_matcher(*args, **kwargs):
+            compared.append(args[:2])
+            return original(*args, **kwargs)
+
+        with patch.object(internships, "SequenceMatcher", side_effect=counted_matcher):
+            result = internships._without_jobteaser_duplicates([teaser, *unrelated])
+
+        self.assertEqual(len(result), 102)
+        self.assertEqual(len(compared), 0)
+
     def test_direct_source_in_another_city_keeps_jobteaser_offer(self):
         direct = replace(self.offer, location="New York, USA")
         teaser = replace(self.offer, location="London, UK",

@@ -10,6 +10,7 @@ import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -23,7 +24,7 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
         raise ValueError("Build directory must be empty; existing files are never published implicitly")
     if collect:
         seed = ROOT / "public_seed.json"
-        if not jobs.CACHE_PATH.exists() and seed.is_file():
+        if seed.is_file():
             seed_bytes = seed.read_bytes()
             assert_public(seed_bytes, "public seed")
             previous = json.loads(seed_bytes)
@@ -33,8 +34,12 @@ def build_site(output: Path, *, collect: bool = False, force: bool = False) -> i
                 url=public_job_url(j["url"]), published=j["published"], score=max(0, 1000-i),
                 start_period=j["start"], family=j["family"],
                 published_inferred=j["date_label"].startswith("Détectée"),
+                source="JobTeaser · sitemap" if urlparse(j["url"]).hostname in {"jobteaser.com", "www.jobteaser.com"} else "Employeur",
             ) for i, j in enumerate(previous["offers"])]
-            jobs._write_cache(datetime.fromisoformat(previous["updated"]), baseline, [])
+            seed_date = datetime.fromisoformat(previous["updated"])
+            jobs._remember_opportunity_snapshot(seed_date, baseline, [], baseline=True)
+            if not jobs.CACHE_PATH.exists():
+                jobs._write_cache(seed_date, baseline, [])
         offers, _, updated = jobs.refresh_opportunities(force=force, notify_email=False, fail_if_busy=True)
     else:
         offers, _, updated = jobs.load_opportunities(refresh=False)

@@ -235,6 +235,7 @@ _source_job_cache: dict[str, dict] = {}
 _source_job_cache_path: Path | None = None
 _force_source_refresh = False
 _refresh_previous_jobs: dict[str, "Opportunity"] = {}
+_refresh_career_jobs: dict[str, "Opportunity"] = {}
 _refresh_first_seen: dict[str, str] = {}
 CACHE_REFRESH_SECONDS = 3600
 CACHE_PATH = Path(os.getenv("INTERNSHIPS_DATA_DIR", str(Path(__file__).resolve().parent / "data"))) / "internships_cache.json"
@@ -517,10 +518,32 @@ def _jobteaser_duplicate(job: Opportunity, official: list[Opportunity]) -> bool:
     return False
 
 
-def _without_jobteaser_duplicates(jobs: list[Opportunity]) -> list[Opportunity]:
-    official = [job for job in jobs if job.source != "JobTeaser · sitemap"]
-    return [job for job in jobs if job.source != "JobTeaser · sitemap"
-            or not _jobteaser_duplicate(job, official)]
+def _is_jobteaser(job: Opportunity) -> bool:
+    # Exported/legacy snapshots can lose the source label; the URL still identifies the aggregator.
+    return (job.source.casefold().startswith("jobteaser")
+            or urlparse(job.url).hostname in {"jobteaser.com", "www.jobteaser.com"})
+
+
+def _without_jobteaser_duplicates(jobs: list[Opportunity], *, official_history: dict[str, Opportunity] | None = None) -> list[Opportunity]:
+    history = _refresh_career_jobs if official_history is None else official_history
+    # Historical postings are matching evidence only. Never resurrect a withdrawn career offer.
+    official = [job for job in jobs if not _is_jobteaser(job)] + list(history.values())
+    # Most direct postings belong to a different employer or contract. Index
+    # those dimensions once so fuzzy title matching only runs on plausible pairs.
+    by_company_kind: dict[tuple[str, str], list[Opportunity]] = {}
+    for job in official:
+        by_company_kind.setdefault((_canonical_company(job.company), job.kind), []).append(job)
+
+    def possible_matches(job: Opportunity) -> list[Opportunity]:
+        company = _canonical_company(job.company)
+        candidates = list(by_company_kind.get((company, job.kind), ()))
+        # Explicit corporate-group exception used by _jobteaser_duplicate.
+        if company == "natixis":
+            candidates.extend(by_company_kind.get(("mirova", job.kind), ()))
+        return candidates
+
+    return [job for job in jobs if not _is_jobteaser(job)
+            or not _jobteaser_duplicate(job, possible_matches(job))]
 
 
 def _canonical_company(company: str) -> str:
@@ -3845,7 +3868,7 @@ def _deduplicate_opportunities(jobs: list[Opportunity]) -> list[Opportunity]:
             if not month and len(months) == 1:
                 month = next(iter(months))
             previous = unique.get(month)
-            if previous is None or (previous.source == "JobTeaser · sitemap" and job.source != "JobTeaser · sitemap") or (
+            if previous is None or (_is_jobteaser(previous) and not _is_jobteaser(job)) or (
                 previous.source == job.source and not previous.start_period and job.start_period
             ) or (previous.source == job.source and not previous.description and job.description):
                 if previous is not None and previous.source == job.source:
@@ -4034,10 +4057,11 @@ def _read_cache() -> tuple[datetime, list[Opportunity], list[str]] | None:
         # earliest detection date we can recover without inventing history.
         jobs = [replace(job, published=updated.date().isoformat(), published_inferred=True)
                 if not job.published else job for job in jobs]
-        first_seen = _first_seen_from_history(_read_history_document())
+        history = _read_history_document()
+        first_seen = _first_seen_from_history(history)
         jobs = [replace(job, published=first_seen[job.url], published_inferred=True)
                 if job.url in first_seen and first_seen[job.url] < job.published else job for job in jobs]
-        jobs = _without_jobteaser_duplicates(jobs)
+        jobs = _without_jobteaser_duplicates(jobs, official_history=_career_jobs_from_history(history))
         checks = payload.get("source_checks") or {}
         _source_checks = {str(name): dict(check) for name, check in checks.items()
                           if isinstance(name, str) and isinstance(check, dict)}
@@ -4058,6 +4082,7 @@ def _read_history_document() -> dict:
                 "baseline": payload.get("baseline") if isinstance(payload.get("baseline"), dict) else None,
                 "snapshots": payload.get("snapshots") if isinstance(payload.get("snapshots"), list) else [],
                 "first_seen": payload.get("first_seen") if isinstance(payload.get("first_seen"), dict) else {},
+                "career_offers": payload.get("career_offers") if isinstance(payload.get("career_offers"), dict) else {},
             }
     except (OSError, ValueError, TypeError, AttributeError):
         pass
@@ -4083,6 +4108,30 @@ def _first_seen_from_history(payload: dict) -> dict[str, str]:
     return dates
 
 
+_CAREER_IDENTITY_FIELDS = ('title', 'company', 'location', 'kind', 'url', 'published',
+                           'score', 'start_period', 'source', 'published_inferred')
+
+
+def _career_jobs_from_history(payload: dict) -> dict[str, Opportunity]:
+    """Keep employer identities after rotating snapshots, without retaining descriptions."""
+    rows = []
+    for snapshot in [payload.get('baseline'), *(payload.get('snapshots') or [])]:
+        if isinstance(snapshot, dict):
+            rows.extend(snapshot.get('jobs') or [])
+    rows.extend((payload.get('career_offers') or {}).values())
+    result = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            job = Opportunity(**{key:row[key] for key in _CAREER_IDENTITY_FIELDS if key in row})
+            if not _is_jobteaser(job):
+                result[job.url] = job
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return result
+
+
 def _remember_opportunity_snapshot(updated: datetime, jobs: list[Opportunity],
                                    errors: list[str], *, baseline: bool = False) -> None:
     """Keep public-feed history so non-admin accounts can read a delayed snapshot."""
@@ -4099,10 +4148,13 @@ def _remember_opportunity_snapshot(updated: datetime, jobs: list[Opportunity],
                                           job.published if _publication_sort_value(job.published) else observed,
                                           observed)
             payload["first_seen"] = first_seen
+            career_jobs = _career_jobs_from_history(payload)
+            career_jobs.update((job.url, job) for job in jobs if not _is_jobteaser(job))
+            payload['career_offers'] = {url:{key:getattr(job,key) for key in _CAREER_IDENTITY_FIELDS}
+                                        for url,job in career_jobs.items()}
             if baseline:
-                if payload.get("baseline") is not None:
-                    return
-                payload["baseline"] = snapshot
+                if payload.get("baseline") is None:
+                    payload["baseline"] = snapshot
             else:
                 snapshots = [item for item in payload.get("snapshots", [])
                              if isinstance(item, dict) and item.get("updated") != snapshot["updated"]]
@@ -4169,7 +4221,7 @@ class CollectionBusyError(RuntimeError):
 
 def refresh_opportunities(force: bool = False, *, notify_email: bool = True,
                           fail_if_busy: bool = False) -> tuple[list[Opportunity], list[str], datetime]:
-    global _cache, _last_attempt, _force_source_refresh, _refresh_previous_jobs, _refresh_first_seen
+    global _cache, _last_attempt, _force_source_refresh, _refresh_previous_jobs, _refresh_first_seen, _refresh_career_jobs
     if not _refresh_guard.acquire(blocking=False):
         if fail_if_busy:
             raise CollectionBusyError("Une autre collecte est déjà en cours.")
@@ -4190,7 +4242,10 @@ def refresh_opportunities(force: bool = False, *, notify_email: bool = True,
             baseline_snapshot = _cache
             _refresh_previous_jobs = previous_jobs
             _force_source_refresh = force
-        _refresh_first_seen = _first_seen_from_history(_read_history_document())
+        history = _read_history_document()
+        _refresh_first_seen = _first_seen_from_history(history)
+        _refresh_career_jobs = _career_jobs_from_history(history)
+        _refresh_career_jobs.update((job.url, job) for job in previous_jobs.values() if not _is_jobteaser(job))
         for job in previous_jobs.values():
             if _publication_sort_value(job.published):
                 _refresh_first_seen[job.url] = min(_refresh_first_seen.get(job.url, job.published), job.published)
@@ -4220,6 +4275,7 @@ def refresh_opportunities(force: bool = False, *, notify_email: bool = True,
     finally:
         _force_source_refresh = False
         _refresh_previous_jobs = {}
+        _refresh_career_jobs = {}
         _refresh_first_seen = {}
         _refresh_guard.release()
 
