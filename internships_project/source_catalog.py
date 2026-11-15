@@ -31,6 +31,7 @@ EXTRA_URLS = {
     'AXA':"https://recrutement.axa.fr/recherche-d%27offres",
 }
 ASSET_MANAGERS = {
+    'Fidelity International',
     'Capital Group',
     'AQR Capital Management',
     'Pictet Asset Management',
@@ -46,6 +47,7 @@ CLIENT_SOLUTIONS = {'Bloomberg', 'FactSet'}
 # leave the older baseline undated rather than inventing historical dates.
 SOURCE_ADDED_ON = {
     'DRW': '2026-11-16',
+    'Fidelity International': '2026-11-16',
     'Capital Group': '2026-11-15',
     'Maven Securities': '2026-11-15',
     'FactSet': '2026-11-15',

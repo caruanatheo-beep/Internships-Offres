@@ -128,6 +128,9 @@ CAREER_PORTALS = {
     "BNY": "https://eofe.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/BNY-Careers/jobs",
 }
 CAREER_LISTINGS = {
+    "Fidelity International": (
+        "https://fidelityinternational.tal.net/vx/lang-en-GB/mobile-0/brand-5/candidate/jobboard/vacancy/1/adv/",
+        "fidelityinternational.tal.net", "/vx/lang-en-GB/mobile-0/brand-5/candidate/so/pm/1/pl/1/opp/"),
     "HSBC Continental Europe": ("https://apply.careers.hsbc.com/search/?q=stage&locationsearch=Paris",
                                  "apply.careers.hsbc.com", "/job/"),
     "La Française": ("https://recrutement.creditmutuel.fr/fr/nos_offres.html?socs=39|4962|1499|1497|4963|4965|5007|5008|1496&tc=3",
@@ -320,6 +323,7 @@ JOBTEASER_CITIES = {
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
     "drw": "www.drw.com",
+    "fidelityinternational": "careers.fidelityinternational.com",
     "factset": "www.factset.com",
     "capitalgroup": "www.capitalgroup.com",
     "mavensecurities": "www.mavensecurities.com",
@@ -1122,7 +1126,7 @@ def is_trusted_offer_url(url: str) -> bool:
         "jobs.smartrecruiters.com", "boards.greenhouse.io", "job-boards.greenhouse.io", "job-boards.eu.greenhouse.io",
         "jobs.lever.co", "jobs.eu.lever.co", "jobs.ashbyhq.com",
         "careers.societegenerale.com", "mon-vie-via.businessfrance.fr",
-        "group.bnpparibas", "careers.cib.bnpparibas", "bnppapply.tal.net", "jobs.ca-cib.com", "recrutement.creditmutuel.fr",
+        "group.bnpparibas", "careers.cib.bnpparibas", "bnppapply.tal.net", "fidelityinternational.tal.net", "jobs.ca-cib.com", "recrutement.creditmutuel.fr",
         "jobs.amundi.com", "www.jobs.amundi.com", "recrutement.arkea.com",
         "career5.successfactors.eu",
         "www.recrutement.arkea.com",
@@ -1656,6 +1660,8 @@ def _career_detail(url: str, company: str, fallback_title: str = "",
     portal_company = company
     if html_override is None:
         response = requests.get(url, timeout=(8, 20))
+        if company == "Fidelity International" and response.status_code in (404, 410):
+            return None
         response.raise_for_status()
         page_html = response.text
     else:
@@ -1663,6 +1669,43 @@ def _career_detail(url: str, company: str, fallback_title: str = "",
     page = _CareerHTML()
     page.feed(page_html)
     text = " ".join(page.parts)
+    if company == "Fidelity International":
+        # Tal.net's visible job fields are authoritative; navigation, unrelated
+        # programmes and the programme year cannot supply missing offer data.
+        if re.search(r"no longer (?:accepting applications|available)|(?:vacancy|opportunity) (?:is )?closed", text, re.I):
+            return None
+        labels = [part.casefold() for part in page.parts]
+        if not page.primary_headings or "job description" not in labels or "programme" not in labels:
+            raise ValueError("Fiche Fidelity incomplète")
+        begin = labels.index("job description") + 1
+        end = labels.index("programme", begin)
+        description_parts = page.parts[begin:end]
+        description = " ".join(description_parts)
+        programme = page.parts[end + 1] if end + 1 < len(page.parts) else ""
+        title = page.primary_headings[0]
+        if re.search(r"\b(?:senior|sr|director|head|principal|lead)\b", title, re.I):
+            return None
+        location = _labelled_job_location(description_parts)
+        if not location:
+            # The actual offer heading explicitly names the programme's city.
+            place = re.search(r"\s[-–]\s([^-–]+)$", title)
+            location = place[1].strip() if place else ""
+        if (not description or programme not in {"Internship", "Graduate", "MBA Internship", "Working Student"}
+                or not _plausible_location(location)):
+            raise ValueError("Fiche Fidelity incomplète")
+        start = _start_period(description)
+        if not start:
+            explicit = re.search(rf"\binternship\b.{{0,100}}?\bfrom\s+(?:early\s+)?({_MONTH})\s+(20\d{{2}})", description, re.I)
+            if explicit:
+                start = f"{explicit[1]} {explicit[2]}"
+        if not start:
+            interval = re.search(rf"\bDuration\s*:\s*\d+\s+Months?\s*\(\s*({_MONTH})\s+to\s+({_MONTH})\s+(20\d{{2}})\s*\)", description, re.I)
+            if interval:
+                start = _title_period(f"{interval[1]} to {interval[2]} {interval[3]}")
+        job = _opportunity(title, company, location, programme, url,
+            _jsonld_job_posted(page_html), start, role_context=description)
+        return replace(job, description=description[:12_000],
+            source="Site carrière · Fidelity International") if job else None
     explicit_start = ""
     offer_text = text.split("Détail de l'offre", 1)[-1]
     if company == "BNP Paribas" and "cette offre est déjà pourvue" in text.casefold():
@@ -2339,6 +2382,16 @@ def _career_page_jobs(company: str, config: tuple[str, str, str]) -> list[Opport
                 successful_pages += 1
                 page = _CareerHTML()
                 page.feed(html)
+                if company == "Fidelity International":
+                    # This public board currently exposes all programmes at once.
+                    # Refuse a truncated/paginated response rather than silently
+                    # publishing only the first page or inventing pagination URLs.
+                    total = re.search(r"\b(\d+)\s+results match!", " ".join(page.parts))
+                    identities = {match[1] for href, _ in page.links
+                        if urlparse(href).scheme == "https" and urlparse(href).hostname == host
+                        and (match := re.search(re.escape(path_prefix) + r"(\d+)-[^/]+/en-GB$", urlparse(href).path))}
+                    if not total or len(identities) != int(total[1]):
+                        raise ValueError("Catalogue Fidelity incomplet : pagination non vérifiée")
                 if company == "HSBC Continental Europe":
                     total = re.search(r'jobRecordsFound:\s*parseInt\("(\d+)"\)', html)
                     per_page = re.search(r'jobRecordsPerPage:\s*parseInt\("(\d+)"\)', html)
@@ -2380,6 +2433,9 @@ def _career_page_jobs(company: str, config: tuple[str, str, str]) -> list[Opport
                 for href, label in links_to_process:
                     url = urljoin(listing_url, href)
                     parsed = urlparse(url)
+                    if company == "Fidelity International" and not re.fullmatch(
+                            re.escape(path_prefix) + r"\d+-[^/]+/en-GB", parsed.path):
+                        continue
                     if company == "La Banque Postale" and parsed.hostname == host:
                         query = dict(parse_qsl(parsed.query))
                         same_listing = parsed.path == urlparse(listing).path
@@ -2408,7 +2464,7 @@ def _career_page_jobs(company: str, config: tuple[str, str, str]) -> list[Opport
                         links[url] = label
     if not successful_pages and last_error:
         raise last_error
-    if successful_pages and not direct_links:
+    if successful_pages and not direct_links and company != "Fidelity International":
         raise ValueError("aucun lien d'offre directe dans les pages carrières publiques")
     detail_errors: list[Exception] = []
     failed_urls: list[str] = []

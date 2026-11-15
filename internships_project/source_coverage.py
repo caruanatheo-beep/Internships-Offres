@@ -14,6 +14,7 @@ class SourceCoverage:
 
 SOURCE_COVERAGE: dict[str, SourceCoverage] = {
     "DRW": SourceCoverage("connected", "https://job-boards.greenhouse.io/drweng", "Official DRW internship page links this public Greenhouse board; complete global feed, publication dates and stable requisition URLs; no HTML fallback"),
+    "Fidelity International": SourceCoverage("connected", "https://fidelityinternational.tal.net/vx/lang-en-GB/mobile-0/brand-5/candidate/jobboard/vacancy/1/adv/", "Official Early Careers HTML board; exhaustive programme count checked and live offer descriptions required; separate professional Workday board not collected; no API or browser fallback"),
     "Capital Group": SourceCoverage("connected", "https://capgroup.wd1.myworkdayjobs.com/en-US/capitalgroupcareers", "Official careers page links this public Workday board; complete global pagination and verified requisition details; no HTML fallback"),
     "FactSet": SourceCoverage("connected", "https://factset.wd108.myworkdayjobs.com/en-US/FactSetCareers", "Official career page links the public Workday CXS board; live details required; no HTML fallback"),
     # Banks
