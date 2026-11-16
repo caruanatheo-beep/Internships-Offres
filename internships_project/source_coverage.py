@@ -13,6 +13,7 @@ class SourceCoverage:
 
 
 SOURCE_COVERAGE: dict[str, SourceCoverage] = {
+    "Jump Trading": SourceCoverage("connected", "https://job-boards.greenhouse.io/jumptrading", "Official students/new-grads page loads this public Greenhouse API; complete global feed, quantitative trading/research campus roles and posting dates; stable requisition URLs, no HTML fallback"),
     "Five Rings": SourceCoverage("connected", "https://job-boards.greenhouse.io/fiveringsllc", "Official careers page links this public Greenhouse board; complete global feed, internship and campus trading roles, publication dates and stable requisition URLs; no HTML fallback"),
     "DRW": SourceCoverage("connected", "https://job-boards.greenhouse.io/drweng", "Official DRW internship page links this public Greenhouse board; complete global feed, publication dates and stable requisition URLs; no HTML fallback"),
     "Fidelity International": SourceCoverage("connected", "https://fidelityinternational.tal.net/vx/lang-en-GB/mobile-0/brand-5/candidate/jobboard/vacancy/1/adv/", "Official Early Careers HTML board; exhaustive programme count checked and live offer descriptions required; separate professional Workday board not collected; no API or browser fallback"),

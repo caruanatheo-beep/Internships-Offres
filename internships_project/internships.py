@@ -34,6 +34,7 @@ SMARTRECRUITERS = {
     "Financeactive": "Finance Active",
 }
 GREENHOUSE = {
+    "jumptrading": "Jump Trading",
     "fiveringsllc": "Five Rings",
     "drweng": "DRW",
     "mavensecuritiesholdingltd": "Maven Securities",
@@ -323,6 +324,7 @@ JOBTEASER_CITIES = {
 # Brand icons are requested from the employer's own site. If an icon is absent,
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
+    "jumptrading": "www.jumptrading.com",
     "fiverings": "fiverings.com",
     "drw": "www.drw.com",
     "fidelityinternational": "careers.fidelityinternational.com",
@@ -1243,7 +1245,7 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
         title = str(item.get("title") or "").strip()
         employment = ""
         offer_url = str(item.get("absolute_url") or "")
-        if slug in {"squarepointcapital", "drweng", "fiveringsllc"}:
+        if slug in {"squarepointcapital", "drweng", "fiveringsllc", "jumptrading"}:
             identity = str(item.get("id") or "")
             location = item.get("location")
             if (not re.fullmatch(r"[1-9][0-9]*", identity) or not title or not description
@@ -1255,6 +1257,14 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
             # Use the verified provider permalink for these employer sites,
             # rather than trusting an arbitrary URL supplied by a public row.
             offer_url = f"https://job-boards.greenhouse.io/{slug}/jobs/{identity}"
+        if slug == "jumptrading":
+            # The verified campus feed also contains AI and software roles.
+            # A Campus full-time quantitative role explicitly targets new grads.
+            if (not re.search(r"\b(?:quantitative (?:trader|researcher)|rates trading|trading assistant)\b", title, re.I)
+                    or re.search(r"\b(?:senior|experienced|lead|manager|engineer|operations)\b", title, re.I)):
+                continue
+            if title.startswith("Campus ") and re.search(r"\(Full-Time\)$", title, re.I):
+                employment = "Graduate"
         if slug == "fiveringsllc":
             if re.search(r"\b(?:experienced|lateral|software|operations|engineer)\b", title, re.I):
                 continue
@@ -1288,7 +1298,7 @@ def _greenhouse_jobs(slug: str, company: str) -> list[Opportunity]:
         if job:
             job = replace(job, description=description[:12_000], deadline=deadline)
             jobs.append(replace(job, source=f"Site carrière · Greenhouse · {company}"))
-    return _deduplicate_opportunities(jobs) if slug in {"squarepointcapital", "drweng", "fiveringsllc"} else jobs
+    return _deduplicate_opportunities(jobs) if slug in {"squarepointcapital", "drweng", "fiveringsllc", "jumptrading"} else jobs
 
 
 def _optiver_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
@@ -4535,7 +4545,8 @@ def _deduplicate_opportunities(jobs: list[Opportunity]) -> list[Opportunity]:
         # A repeated requisition may collapse; different employer IDs must survive.
         requisition = (re.search(r"_(R\d+)(?:-\d+)?$", urlparse(job.url).path)
                        if _canonical_company(job.company) == "factset" else None)
-        greenhouse_board = {"drw": "drweng", "fiverings": "fiveringsllc"}.get(_canonical_company(job.company))
+        greenhouse_board = {"drw": "drweng", "fiverings": "fiveringsllc",
+                            "jumptrading": "jumptrading"}.get(_canonical_company(job.company))
         if greenhouse_board:
             requisition = re.fullmatch(rf"/{greenhouse_board}/jobs/([1-9][0-9]*)/?", urlparse(job.url).path)
         key = (_canonical_title(job.title), _canonical_company(job.company), location_key, job.kind,
