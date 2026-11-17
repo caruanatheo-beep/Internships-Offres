@@ -34,6 +34,9 @@ SMARTRECRUITERS = {
     "Financeactive": "Finance Active",
 }
 GREENHOUSE = {
+    "xtxmarketstechnologies": "XTX Markets",
+    "wehrtyou": "Hudson River Trading",
+    "marketaxesscorporation": "MarketAxess",
     "jumptrading": "Jump Trading",
     "fiveringsllc": "Five Rings",
     "drweng": "DRW",
@@ -54,6 +57,12 @@ LEVER = {
 }
 ASHBY = {}
 WORKDAY = {
+    "S&P Global Market Intelligence": ("spgi.wd5.myworkdayjobs.com", "spgi", "SPGI_Careers"),
+    "LSEG": ("lseg.wd3.myworkdayjobs.com", "lseg", "Careers"),
+    "Mizuho": ("mizuho.wd1.myworkdayjobs.com", "mizuho", "mizuhoamericas"),
+    "RBC Capital Markets": ("rbc.wd3.myworkdayjobs.com", "rbc", "RBCEARLYTALENT1"),
+    "Murex": ("murex.wd3.myworkdayjobs.com", "murex", "MurexCareerPage1"),
+    "PIMCO": ("pimco.wd1.myworkdayjobs.com", "pimco", "pimco-careers"),
     "FactSet": ("factset.wd108.myworkdayjobs.com", "factset", "FactSetCareers"),
     "Capital Group": ("capgroup.wd1.myworkdayjobs.com", "capgroup", "capitalgroupcareers"),
     "TP ICAP": ("tp.wd107.myworkdayjobs.com", "tp", "TP-ICAP"),
@@ -130,6 +139,15 @@ CAREER_PORTALS = {
     "BNY": "https://eofe.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/BNY-Careers/jobs",
 }
 CAREER_LISTINGS = {
+    "BlackRock": ("https://careers.blackrock.com/category/students-and-graduates-jobs/45831/9022304/1",
+                  "careers.blackrock.com", "/job/"),
+    "SMBC": ("https://careers.smbcgroup.com/search/?q=&sortColumn=referencedate&sortDirection=desc",
+             "careers.smbcgroup.com", "/smbc/job/"),
+    "Intesa Sanpaolo IMI CIB": ("https://jobs.intesasanpaolo.com/search/?q=IMI+CIB&sortColumn=referencedate&sortDirection=desc",
+                              "jobs.intesasanpaolo.com", "/job/"),
+    "Nomura": (
+        "https://nomuracampus.tal.net/vx/lang-en-GB/mobile-0/appcentre-ext/brand-4/candidate/jobboard/vacancy/1/adv/",
+        "nomuracampus.tal.net", "/vx/lang-en-GB/mobile-0/appcentre-1/brand-4/candidate/so/pm/1/pl/1/opp/"),
     "Fidelity International": (
         "https://fidelityinternational.tal.net/vx/lang-en-GB/mobile-0/brand-5/candidate/jobboard/vacancy/1/adv/",
         "fidelityinternational.tal.net", "/vx/lang-en-GB/mobile-0/brand-5/candidate/so/pm/1/pl/1/opp/"),
@@ -157,6 +175,8 @@ CAREER_LISTINGS = {
 }
 ODDO_ALTAYS_LISTING = "https://recrutement.altays-progiciels.com/oddo/en/recherche.html"
 ORACLE_CAREER_BOARDS = {
+    "Tradeweb": ("https://ecnf.fa.us2.oraclecloud.com", "CX", "Tradeweb"),
+    "Edmond de Rothschild AM": ("https://evht.fa.ocs.oraclecloud.eu", "CX_2001", "Edmond de Rothschild AM"),
     "BNY": ("https://eofe.fa.us2.oraclecloud.com", "BNY-Careers", "BNY"),
     "Lazard Student Careers": (
         "https://icbpjb.fa.ocs.oraclecloud.com",
@@ -252,7 +272,10 @@ _refresh_previous_jobs: dict[str, "Opportunity"] = {}
 _refresh_career_jobs: dict[str, "Opportunity"] = {}
 _refresh_first_seen: dict[str, str] = {}
 CACHE_REFRESH_SECONDS = 3600
-CACHE_PATH = Path(os.getenv("INTERNSHIPS_DATA_DIR", str(Path(__file__).resolve().parent / "data"))) / "internships_cache.json"
+# Career feeds are independent and I/O-bound. Twelve outer workers reduce
+# queueing while keeping source-level concurrency explicitly bounded.
+SOURCE_COLLECTION_WORKERS = 12
+CACHE_PATH = Path(os.getenv("INTERNSHIPS_DATA_DIR", str((Path(__file__).resolve().parents[2] / "internships_project" / "data" if Path(__file__).resolve().parents[1].name == "Internships" else Path(__file__).resolve().parent / "data")))) / "internships_cache.json"
 JOBTEASER_CACHE_PATH = CACHE_PATH.with_name("jobteaser_sitemap_cache.json")
 CACHE_SECONDS = CACHE_REFRESH_SECONDS
 PUBLIC_UPDATE_DELAY_SECONDS = 3 * 3600
@@ -324,6 +347,28 @@ JOBTEASER_CITIES = {
 # Brand icons are requested from the employer's own site. If an icon is absent,
 # the card keeps its initials; no third-party logo service receives the visit.
 COMPANY_ICON_HOSTS = {
+    "ostrum": "www.ostrum.com",
+    "labanquepostaleam": "www.lbpam.com",
+    'spglobalmarketintelligence': 'www.spglobal.com',
+    'lseg': 'www.lseg.com',
+    'mizuho': 'www.mizuhogroup.com',
+    'tradeweb': 'www.tradeweb.com',
+    'edmondderothschildam': 'www.edmond-de-rothschild.com',
+    'xtxmarkets': 'www.xtxmarkets.com',
+    'hudsonrivertrading': 'www.hudsonrivertrading.com',
+    'marketaxess': 'www.marketaxess.com',
+    'blackrock': 'careers.blackrock.com',
+    'smbc': 'www.smbcgroup.com',
+    'intesasanpaoloimicib': 'group.intesasanpaolo.com',
+    'mirova': 'www.mirova.com',
+    'cpram': 'cpram.com',
+    'icedataservices': 'www.ice.com',
+    'marketsecurities': 'www.market-securities.com',
+
+    "nomura": "www.nomura.com",
+    "rbccapitalmarkets": "jobs.rbc.com",
+    "murex": "www.murex.com",
+    "pimco": "www.pimco.com",
     "jumptrading": "www.jumptrading.com",
     "fiverings": "fiverings.com",
     "drw": "www.drw.com",
@@ -1093,20 +1138,86 @@ def _factset_kind(title: str, employment: str = "", context: str = "") -> str | 
     return None
 
 
+def _pimco_client_role(title: str) -> bool:
+    return bool(re.search(r"\b(?:account (?:analyst|manager)|client management|"
+                          r"(?:psg )?product (?:analyst|specialist|strategist))\b", title, re.I))
+
+
+def _pimco_relevant(title: str, context: str = "", *, candidate: bool = False) -> bool:
+    # These channels and operational programmes are outside institutional distribution.
+    if (_NON_MARKET_ROLE.search(title) or re.search(
+            r"\b(?:wealth|retail|private family|private strategies|operations|"
+            r"trade support|software|technology|compliance|corporate)\b", title, re.I)):
+        return False
+    if _pimco_client_role(title):
+        if not context:
+            return candidate  # Listing only; the live description must confirm the role.
+        return bool(re.search(r"\b(?:client relationships?|client servic\w*|client communication|"
+                              r"product strategy|distribution)\b", context, re.I)
+                    and re.search(r"\b(?:portfolio|investment strategies|financial markets?)\b", context, re.I))
+    return _market_relevant_with_context(title, context)
+
+
+def _murex_relevant(title: str, context: str = "", *, candidate: bool = False) -> bool:
+    """Select client-facing markets solutions, not software or operations roles."""
+    if (not re.search(r"\b(?:trading|fixed income|rates|fx|client solutions)\b", title, re.I)
+            or re.search(r"\b(?:senior|sr|lead|head|manager|director|engineer|developer|"
+                         r"operations|back office|retail|corporate)\b", title, re.I)):
+        return False
+    if not context:
+        return candidate  # A listing is only a candidate until its live detail is read.
+    return bool(not _experienced_junior(context)
+        and re.search(r"\b(?:client support|client-facing|client solutions|client requirements|"
+                      r"client.s requirements)\b", context, re.I)
+        and re.search(r"\b(?:financial instruments|foreign exchange|fixed income|"
+                      r"derivatives|swaps|bonds)\b", context, re.I))
+
+
+def _rbc_relevant(title: str, context: str = "", *, candidate: bool = False) -> bool:
+    """RBC campus markets desks, with live evidence for debt origination."""
+    if (_NON_MARKET_ROLE.search(title) or re.search(
+            r"\b(?:senior|sr|director|head|lead|vice president|retail|corporate|wealth|"
+            r"operations|reporting|control|securitization|software|developer|quant|research)\b",
+            title, re.I) or not re.search(
+            r"\b(?:sales|trading|broker|rates|credit|fx|repo|dcm|debt capital markets|"
+            r"origination|treasury solutions)\b", title, re.I)):
+        return False
+    if not context:
+        return candidate
+    if _experienced_junior(context):
+        return False
+    if re.search(r"\borigination\b", title, re.I):
+        return bool(re.search(r"\b(?:fixed income origination|debt capital markets|"
+                              r"debt transactions|bond syndication)\b", context, re.I))
+    return bool(re.search(r"\b(?:fixed income|equities|equity products|foreign exchange|"
+                          r"derivatives|currencies|institutional clients|repo)\b", context, re.I))
+
+
+FINANCIAL_DATA_EMPLOYERS = frozenset({'S&P Global Market Intelligence','LSEG','Tradeweb','ICE Data Services','MarketAxess'})
+
+
 def _opportunity(title: str, company: str, location: str, employment: str,
                  url: str, published: str, start_period: str = "",
                  role_context: str = "", *, defer_junior_context: bool = False) -> Opportunity | None:
     title = title.strip()
     location = _clean_job_location(location, title)
     kind = (_tp_icap_kind(title, employment, role_context) if company == "TP ICAP" else
-            _factset_kind(title, employment, role_context) if company == "FactSet" else
+            _factset_kind(title, employment, role_context) if company == "FactSet" or company in FINANCIAL_DATA_EMPLOYERS else
             _morgan_stanley_kind(title, employment, role_context)
             if company == "Morgan Stanley" else _kind(title, employment))
-    market = _market_relevant_with_context(title, role_context)
-    if company == "FactSet" and _factset_client_solutions(title):
+    market = (_rbc_relevant(title, role_context, candidate=defer_junior_context)
+              if company == "RBC Capital Markets" else
+              _murex_relevant(title, role_context, candidate=defer_junior_context)
+              if company == "Murex" else
+              _pimco_relevant(title, role_context, candidate=defer_junior_context)
+              if company == "PIMCO" else _market_relevant_with_context(title, role_context))
+    if (company == "FactSet" or company in FINANCIAL_DATA_EMPLOYERS) and _factset_client_solutions(title):
         market = True
         if defer_junior_context and not role_context and re.search(r"\bassociate\b", title, re.I):
             kind = kind or "Graduate"  # Candidate only; the live detail must confirm early careers.
+    if company == 'S&P Global Market Intelligence' and not defer_junior_context:
+        if not re.search(r'market intelligence',role_context,re.I):
+            return None
     pending_junior = defer_junior_context and not role_context and _junior_analyst(title) and _market_candidate(title)
     if (not kind or not (market or pending_junior) or _excluded_employer(company) or not _plausible_location(location)
             or kind == "Graduate" and _junior_analyst(title) and _experienced_junior(role_context)):
@@ -1119,9 +1230,15 @@ def _opportunity(title: str, company: str, location: str, employment: str,
         "trading", "trader", "sales", "structur", "fixed income", "rates", "fx", "derivative", "dérivé"
     ))
     score = (100 if paris and kind == "Stage" else 70 if paris else 45) + (15 if market_focus else 0)
+    family = _family(title, role_context)
+    if company == "PIMCO" and _pimco_client_role(title):
+        family = "Asset Management" if re.search(r"\bproduct\b", title, re.I) else "Client Service / Financial Solutions"
+    elif company == "Murex" or (company == "FactSet" or company in FINANCIAL_DATA_EMPLOYERS) and _factset_client_solutions(title):
+        family = "Client Service / Financial Solutions"
+    elif company == "RBC Capital Markets" and re.search(r"\borigination\b", title, re.I):
+        family = "Capital Markets"
     return Opportunity(title, company, location, kind, url, published[:10], score, start_period,
-                       "Client Service / Financial Solutions" if company == "FactSet" and _factset_client_solutions(title)
-                       else _family(title, role_context), "", datetime.now(timezone.utc).date().isoformat(), employment=employment)
+                       family, "", datetime.now(timezone.utc).date().isoformat(), employment=employment)
 
 
 def is_trusted_offer_url(url: str) -> bool:
@@ -1148,8 +1265,13 @@ def is_trusted_offer_url(url: str) -> bool:
         "jobs.commerzbank.com", "jobs.standardchartered.com", "apply.careers.hsbc.com",
         "www.akunacapital.com", "akunacapital.com", "careers.sig.com",
         "careers.aqr.com", "bloomberg.avature.net", "careers.bankofamerica.com",
-        "morganstanley.eightfold.ai",
+        "morganstanley.eightfold.ai", "nomuracampus.tal.net",
         *(board[0] for board in WORKDAY.values()),
+        *(config[1] for config in CAREER_LISTINGS.values()),
+        *(urlparse(board[0]).hostname for board in ORACLE_CAREER_BOARDS.values()),
+        "www.hudsonrivertrading.com", "www.marketaxess.com",
+        "careers.ice.com", "marketsecurities.bamboohr.com",
+        "www.lbpam.com",
     }
     try:
         parsed = urlparse(url)
@@ -1674,12 +1796,75 @@ def _career_publication_date(raw: str) -> str:
         return ""
 
 
+def _nomura_detail(url: str, page_html: str, page: _CareerHTML,
+                   fallback_title: str = "") -> Opportunity | None:
+    """Read only this Tal.net vacancy's fields, never related vacancies or navigation."""
+    text = " ".join(page.parts)
+    if re.search(r"no longer (?:accepting applications|available)|(?:vacancy|opportunity) (?:is )?closed", text, re.I):
+        return None
+    if (fallback_title and page.primary_headings
+            and _canonical_title(page.primary_headings[0]) != _canonical_title(fallback_title)):
+        raise ValueError("Fiche Nomura sans annonce correspondante")
+    form = re.search(r'<form\b[^>]*class=["\'][^"\']*\bform-view\b[^"\']*["\'][^>]*>(.*?)</form>',
+                     page_html, re.I | re.S)
+    if not form or not page.primary_headings:
+        raise ValueError("Fiche Nomura incomplète")
+    sections = re.split(r'<span\b[^>]*class=["\']hform_lbl_text["\'][^>]*>\s*([^<]+?)\s*</span>',
+                        form[1], flags=re.I)
+    fields = {}
+    for label, raw in zip(sections[1::2], sections[2::2]):
+        field = _CareerHTML()
+        field.feed(raw)
+        fields[label.casefold()] = " ".join(field.parts).strip()
+    title = page.primary_headings[0]
+    description = fields.get("job description", "")
+    location = fields.get("location", "")
+    programme = fields.get("program type", "")
+    if not description or not _plausible_location(location) or not programme:
+        raise ValueError("Fiche Nomura sans description, lieu ou contrat")
+    identity = re.search(r"/opp/(\d+)-", url)
+    apply_links = re.findall(r'<form\b[^>]*action=["\']([^"\']+)["\']', page_html, re.I)
+    if not identity or not any(
+            (parsed := urlparse(html.unescape(link))).scheme == "https"
+            and parsed.hostname == "nomuracampus.tal.net"
+            and parsed.path.endswith(f"/opp/{identity[1]}/apply/en-GB") for link in apply_links):
+        raise ValueError("Fiche Nomura sans candidature ouverte vérifiable")
+    deadline_match = re.search(r"Application Deadline:\s*(\d{2}/\d{2}/\d{4})", page_html, re.I)
+    deadline = ""
+    if deadline_match:
+        try:
+            deadline = datetime.strptime(deadline_match[1], "%d/%m/%Y").date().isoformat()
+        except ValueError as exc:
+            raise ValueError("Échéance Nomura invalide") from exc
+        if date.fromisoformat(deadline) < datetime.now(timezone.utc).date():
+            return None
+    # This board also contains insight events, technology and support programmes.
+    if (not re.search(r"internship|graduate|full.time|\bVIE\b", programme, re.I)
+            or re.search(r"\b(?:senior|director|head|operations|fsops|digital office|quants?|strats?|technology|retail|corporate)\b", title, re.I)
+            or not re.search(r"\b(?:sales|trading|structur\w*|global markets|rates|credit|dcm)\b", title, re.I)):
+        return None
+    # Some live descriptions advertise two cohorts then retain an older start
+    # date in their body. Preserve the text without choosing a misleading date.
+    start = "" if re.search(r"following (?:start )?dates", description, re.I) else _start_period(description)
+    posting = _jsonld_jobposting(page_html)
+    published = (_jsonld_job_posted(page_html) if posting.get("title")
+        and _canonical_title(str(posting["title"])) == _canonical_title(title) else "")
+    job = _opportunity(title, "Nomura", location, programme, url,
+        published, start, role_context=description)
+    family = ("Sales" if job and job.family == "Risk / Support"
+        and re.search(r"(?:work with|join).{0,40}\b(?:structured |fixed income )?sales team\b", description, re.I)
+        else job.family if job else "")
+    return replace(job, kind='Stage' if re.search(r'internship',programme,re.I) else job.kind,
+        description=description[:12_000], deadline=deadline, family=family,
+        source="Site carrière · Nomura") if job else None
+
+
 def _career_detail(url: str, company: str, fallback_title: str = "",
                    html_override: str | None = None) -> Opportunity | None:
     portal_company = company
     if html_override is None:
         response = requests.get(url, timeout=(8, 20))
-        if company == "Fidelity International" and response.status_code in (404, 410):
+        if company in {"Fidelity International", "Nomura"} and response.status_code in (404, 410):
             return None
         response.raise_for_status()
         page_html = response.text
@@ -1688,6 +1873,8 @@ def _career_detail(url: str, company: str, fallback_title: str = "",
     page = _CareerHTML()
     page.feed(page_html)
     text = " ".join(page.parts)
+    if company == "Nomura":
+        return _nomura_detail(url, page_html, page, fallback_title)
     if company == "Fidelity International":
         # Tal.net's visible job fields are authoritative; navigation, unrelated
         # programmes and the programme year cannot supply missing offer data.
@@ -2362,6 +2549,7 @@ def _axa_jobs() -> list[Opportunity]:
 def _career_page_jobs(company: str, config: tuple[str, str, str]) -> list[Opportunity]:
     listing, host, path_prefix = config
     links: dict[str, str] = {}
+    nomura_ids: set[str] = set()
     listings = [listing]
     if company == "Crédit Mutuel / CIC":
         listings.append("https://recrutement.creditmutuel.fr/fr/etudiants/stage.html")
@@ -2401,7 +2589,7 @@ def _career_page_jobs(company: str, config: tuple[str, str, str]) -> list[Opport
                 successful_pages += 1
                 page = _CareerHTML()
                 page.feed(html)
-                if company == "Fidelity International":
+                if company in {"Fidelity International", "Nomura"}:
                     # This public board currently exposes all programmes at once.
                     # Refuse a truncated/paginated response rather than silently
                     # publishing only the first page or inventing pagination URLs.
@@ -2410,7 +2598,26 @@ def _career_page_jobs(company: str, config: tuple[str, str, str]) -> list[Opport
                         if urlparse(href).scheme == "https" and urlparse(href).hostname == host
                         and (match := re.search(re.escape(path_prefix) + r"(\d+)-[^/]+/en-GB$", urlparse(href).path))}
                     if not total or len(identities) != int(total[1]):
-                        raise ValueError("Catalogue Fidelity incomplet : pagination non vérifiée")
+                        raise ValueError(f"Catalogue {'Fidelity' if company == 'Fidelity International' else company} incomplet : pagination non vérifiée")
+                if company in {"SMBC", "Intesa Sanpaolo IMI CIB"}:
+                    for href in re.findall(r'href=["\']([^"\']+)["\']', html, re.I):
+                        candidate = urljoin(listing_url, __import__('html').unescape(href))
+                        parsed_page = urlparse(candidate)
+                        offset = dict(parse_qsl(parsed_page.query)).get('startrow', '')
+                        if (parsed_page.scheme == 'https' and parsed_page.hostname == host
+                                and parsed_page.path == urlparse(listing).path and offset.isdigit()
+                                and candidate not in visited and candidate not in listings):
+                            if int(offset) >= 2500 or len(listings) >= 100:
+                                raise ValueError('SuccessFactors pagination exceeds verified limit')
+                            listings.append(candidate)
+                if company == "BlackRock":
+                    pages = re.search(r'data-total-pages="(\d+)"', html)
+                    if not pages or not 1 <= int(pages[1]) <= 50:
+                        raise ValueError('BlackRock campus pagination requires verification')
+                    for number in range(2,int(pages[1])+1):
+                        candidate = listing.rstrip('/')+'/'+str(number)
+                        if candidate not in visited and candidate not in listings:
+                            listings.append(candidate)
                 if company == "HSBC Continental Europe":
                     total = re.search(r'jobRecordsFound:\s*parseInt\("(\d+)"\)', html)
                     per_page = re.search(r'jobRecordsPerPage:\s*parseInt\("(\d+)"\)', html)
@@ -2452,7 +2659,7 @@ def _career_page_jobs(company: str, config: tuple[str, str, str]) -> list[Opport
                 for href, label in links_to_process:
                     url = urljoin(listing_url, href)
                     parsed = urlparse(url)
-                    if company == "Fidelity International" and not re.fullmatch(
+                    if company in {"Fidelity International", "Nomura"} and not re.fullmatch(
                             re.escape(path_prefix) + r"\d+-[^/]+/en-GB", parsed.path):
                         continue
                     if company == "La Banque Postale" and parsed.hostname == host:
@@ -2473,17 +2680,22 @@ def _career_page_jobs(company: str, config: tuple[str, str, str]) -> list[Opport
                     if parsed.path.rstrip("/") == path_prefix.rstrip("/") and not parsed.query:
                         continue
                     direct_links += 1
-                    market_label = _market_candidate(label) or (
+                    market_label = _market_candidate(label) or (company == "BlackRock" and bool(_kind(label,""))) or (
                         company == "Ofi Invest" and bool(re.search(
                             r"analyste\s+(?:cr[eÃ©]dit|obligataire)|fixed\s+income\s+analyst|credit\s+analyst",
                             label, re.IGNORECASE,
                         ))
                     )
                     if market_label:
+                        if company == "Nomura":
+                            identity = re.search(r"/opp/(\d+)-", parsed.path)[1]
+                            if identity in nomura_ids:
+                                continue
+                            nomura_ids.add(identity)
                         links[url] = label
     if not successful_pages and last_error:
         raise last_error
-    if successful_pages and not direct_links and company != "Fidelity International":
+    if successful_pages and not direct_links and company not in {"Fidelity International", "Nomura"}:
         raise ValueError("aucun lien d'offre directe dans les pages carrières publiques")
     detail_errors: list[Exception] = []
     failed_urls: list[str] = []
@@ -3507,11 +3719,144 @@ def _covea_finance_jobs(_slug: str = "", _company: str = "") -> list[Opportunity
     return _career_rss_jobs("Covéa Finance", "coveafinance-recrute.talent-soft.com", (579,))
 
 
+def _ice_data_jobs() -> list[Opportunity]:
+    """Read the public iCIMS/Jibe catalogue; never use login/application URLs."""
+    found, seen = [], set()
+    for page in range(1,101):
+        response = requests.get('https://careers.ice.com/api/jobs',
+                                params={'page':page,'limit':100},timeout=(8,25))
+        response.raise_for_status()
+        payload = response.json()
+        rows, total = payload.get('jobs'), payload.get('totalCount')
+        if not isinstance(rows,list) or type(total) is not int or total < 0:
+            raise ValueError('Invalid ICE public catalogue')
+        before = len(seen)
+        for row in rows:
+            item = row.get('data') if isinstance(row,dict) else None
+            if not isinstance(item,dict) or not re.fullmatch(r'\d+',str(item.get('slug',''))):
+                raise ValueError('Invalid ICE public posting')
+            identity = str(item['slug'])
+            if identity in seen:
+                continue
+            seen.add(identity)
+            if item.get('external') is False or item.get('applyable') is False:
+                continue
+            description = _plain_text(str(item.get('description') or ''))
+            # The group also recruits in mortgage technology and other divisions.
+            if not re.search(r'ICE Data|market data|reference data|fixed income|pricing data',description,re.I):
+                continue
+            published = str(item.get('posted_date') or '')[:10]
+            try:
+                published = date.fromisoformat(published).isoformat()
+            except ValueError:
+                published = ''
+            job = _opportunity(str(item.get('title') or ''),'ICE Data Services',
+                str(item.get('full_location') or item.get('location_name') or item.get('city') or ''),
+                str(item.get('employment_type') or ''),f'https://careers.ice.com/jobs/{identity}',
+                published,role_context=description)
+            if job:
+                found.append(replace(job,description=description[:12_000],source='Site carrière · ICE Data Services'))
+        if len(seen) >= total:
+            return found
+        if len(seen) == before:
+            raise _PartialSourceError(found,[],search_failures=1)
+    raise _PartialSourceError(found,[],search_failures=1)
+
+
+def _market_securities_jobs() -> list[Opportunity]:
+    """BambooHR exposes a public list and a separate, current vacancy detail."""
+    base = 'https://marketsecurities.bamboohr.com/careers'
+    response = requests.get(base+'/list',timeout=(8,20))
+    response.raise_for_status()
+    rows = response.json().get('result')
+    if not isinstance(rows,list):
+        raise ValueError('Invalid Market Securities catalogue')
+    found, failed = [], []
+    for row in rows:
+        if not isinstance(row,dict) or not re.fullmatch(r'\d+',str(row.get('id',''))):
+            raise ValueError('Invalid Market Securities posting')
+        title = str(row.get('jobOpeningName') or '')
+        if re.search(r'referral|talent pool|spontaneous',title,re.I) or not _market_candidate(title):
+            continue
+        if not _kind(title,str(row.get('employmentStatusLabel') or '')):
+            continue
+        url = base+'/'+str(row['id'])
+        try:
+            detail = requests.get(url+'/detail',timeout=(8,20))
+            if detail.status_code in (404,410):
+                continue
+            detail.raise_for_status()
+            info = (detail.json().get('result') or {}).get('jobOpening')
+            if (not isinstance(info,dict) or info.get('jobOpeningShareUrl') != url
+                    or not info.get('jobOpeningName') or not info.get('description')):
+                raise ValueError('Incomplete Market Securities detail')
+            if info.get('jobOpeningStatus') != 'Open':
+                continue
+            place = info.get('location') or {}
+            location = ', '.join(str(place[k]) for k in ('city','state','addressCountry') if place.get(k))
+            description = _plain_text(str(info['description']))
+            job = _opportunity(str(info['jobOpeningName']),'Market Securities',location,
+                str(info.get('employmentStatusLabel') or ''),url,str(info.get('datePosted') or ''),
+                role_context=description)
+            if job:
+                found.append(replace(job,description=description[:12_000],source='Site carrière · Market Securities'))
+        except (requests.RequestException,ValueError,TypeError,AttributeError):
+            failed.append(url)
+    if failed:
+        raise _PartialSourceError(found,failed)
+    return found
+
+
+def _lbpam_jobs() -> list[Opportunity]:
+    """Use the same public Minotore catalogue as the employer's jobs screen."""
+    response = requests.post('https://www.lbpam.com/mapi/PageContentAPI/getRelatedContentByModuleAndContext',
+        json={'context':{'countryCode':'WORLD','languageCode':'fr','userProfileName':'ALL'},
+              'moduleKeyword':'offer','nbrOfElements':-1},timeout=(8,25))
+    response.raise_for_status()
+    rows = response.json().get('pages')
+    if not isinstance(rows,list):
+        raise ValueError('Invalid LBP AM public catalogue')
+    found = []
+    for row in rows:
+        if not isinstance(row,dict) or row.get('module') != 'offer':
+            raise ValueError('Invalid LBP AM public posting')
+        seo = row.get('seoData') or {}
+        url = str(seo.get('canonical') or '')
+        if row.get('moduleLandingPage') or not url.startswith('https://www.lbpam.com/fr/carrieres/offre/') or not is_trusted_offer_url(url):
+            continue
+        tags = row.get('tags') or []
+        contract = ' '.join(tag[len('CARRIERE_CONTRAT_'):].replace('_',' ') for tag in tags if isinstance(tag,str) and tag.startswith('CARRIERE_CONTRAT_'))
+        location = ', '.join(tag[len('CARRIERE_LOCATION_'):].replace('_',' ') for tag in tags if isinstance(tag,str) and tag.startswith('CARRIERE_LOCATION_'))
+        title, description = str(seo.get('title') or ''), _plain_text(str(seo.get('description') or ''))
+        if not title or not description or not location or not contract:
+            raise ValueError('Incomplete LBP AM public posting')
+        published = ''
+        stamp = row.get('publishingDate')
+        if isinstance(stamp,(int,float)) and not isinstance(stamp,bool):
+            published = datetime.fromtimestamp(stamp/1000,timezone.utc).date().isoformat()
+            if published > datetime.now(timezone.utc).date().isoformat():
+                continue
+        job = _opportunity(title,'La Banque Postale AM',location,contract,url,published,role_context=description)
+        if job:
+            found.append(replace(job,description=description[:12_000],source='Site carrière · La Banque Postale AM'))
+    return found
+
+
+def _subsidiary_jobs(company: str) -> list[Opportunity]:
+    if company == 'CPR AM':
+        return [job for job in _amundi_jobs() if _canonical_company(job.company) in {'cpram','cprassetmanagement'}]
+    return _bpce_open_data_jobs('',company)
+
+
 def _bpce_open_data_jobs(_slug: str = "", _company: str = "") -> list[Opportunity]:
     """Use the public BPCE dataset; never synthesize a direct offer URL."""
     endpoint = ("https://bpce.opendatasoft.com/api/explore/v2.1/catalog/datasets/"
                 "groupe-bpce-offres-emploi/exports/json")
-    response = requests.get(endpoint, timeout=(5, 45))
+    if _company in {'Ostrum AM','Mirova'}:
+        term = 'Ostrum' if _company == 'Ostrum AM' else 'Mirova'
+        response = requests.get(endpoint,params={'where':f'search(organization,"{term}")'},timeout=(5,45))
+    else:
+        response = requests.get(endpoint, timeout=(5, 45))
     response.raise_for_status()
     payload = response.json()
     rows = payload.get("results", []) if isinstance(payload, dict) else payload
@@ -3542,6 +3887,11 @@ def _bpce_open_data_jobs(_slug: str = "", _company: str = "") -> list[Opportunit
         if not _market_relevant(title):
             continue
         company = field(row, "organization", "entreprise", "employeur", "entite", "entite_recruteuse", "societe", "company", "brand")
+        if _company in {'Ostrum AM','Mirova'}:
+            expected = 'ostrum' if _company == 'Ostrum AM' else 'mirova'
+            if expected not in _canonical_company(company):
+                continue
+            company = _company
         description = field(row, "description", "descriptif", "description_du_poste", "mission", "missions")
         if not company:
             company = "Employeur non précisé (BPCE)"
@@ -3778,8 +4128,25 @@ def _pictet_jobs() -> list[Opportunity]:
     return jobs
 
 
+def _rbc_posting_dates(info: dict, description: str) -> tuple[str, str]:
+    # The employer's explicit Posted Date can predate a Workday repost.
+    posted = re.search(r"\bPosted Date:\s*(\d{4}-\d{2}-\d{2})\b", description, re.I)
+    published = _workday_publication_date(posted[1] if posted else info.get("startDate"),
+                                          info.get("postedOn"))
+    closing = re.search(r"\bApplication Deadline:\s*(\d{4}-\d{2}-\d{2})\b", description, re.I)
+    raw = str(closing[1] if closing else info.get("endDate") or info.get("validThrough") or "")[:10]
+    try:
+        deadline = date.fromisoformat(raw)
+        if re.search(r"applications will be accepted until 11:59\s*PM on the day prior "
+                     r"to the application deadline date above", description, re.I):
+            deadline -= timedelta(days=1)
+        return published, deadline.isoformat()
+    except ValueError:
+        return published, ""
+
+
 def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) -> list[Opportunity]:
-    verified_feed = company in {"TP ICAP", "Capital Group", "FactSet"}
+    verified_feed = company in {"TP ICAP", "Capital Group", "FactSet", "PIMCO", "Murex", "RBC Capital Markets", "S&P Global Market Intelligence", "LSEG", "Mizuho"}
     if company == "BBVA" and _client is None:
         # Reuse one connection: repeated parallel TLS connections to BBVA time out.
         with requests.Session() as session:
@@ -3930,6 +4297,10 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 if (info.get("canApply") is not True or not info.get("title")
                         or not description or not info.get("location")):
                     raise ValueError("Fiche Workday incomplète")
+                if company in {"PIMCO", "Murex", "RBC Capital Markets"}:
+                    locations = [location] + [place for place in (info.get("additionalLocations") or [])
+                                              if isinstance(place, str) and place.strip()]
+                    location = "; ".join(dict.fromkeys(locations))
                 revised = _opportunity(str(info["title"]), company, location,
                     str(info.get("timeType") or ""), job.url,
                     _workday_publication_date(info.get("startDate"), info.get("postedOn")),
@@ -3944,6 +4315,12 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
                 # Workday startDate is the publication date; the programme dates
                 # below are explicit employer text, never inferred from graduation.
                 start = revised.start_period
+                if company == "RBC Capital Markets":
+                    published, deadline = _rbc_posting_dates(info, _plain_text(description))
+                    revised = replace(revised, published=published)
+                    cohort = re.search(r"\b(20\d{2})\b.*\bsummer\b", revised.title, re.I)
+                    if not start and cohort:
+                        start = f"Summer {cohort[1]}"
                 program = re.search(r"Program(?:me)? dates?:\s*(?:\w+,\s*)?"
                     r"([A-Z][a-z]+)\s+(\d{1,2})\s*[-–—]\s*(?:\w+,\s*)?"
                     r"[A-Z][a-z]+\s+\d{1,2},?\s+(20\d{2})", _plain_text(description))
@@ -4003,7 +4380,7 @@ def _workday_jobs(company: str, board: tuple[str, str, str], *, _client=None) ->
             return job
 
     selected = dict(sorted(candidates.items(), key=lambda pair: -pair[1].score)[:50])
-    if company in {"Capital Group", "FactSet"}:
+    if company in {"Capital Group", "FactSet", "PIMCO", "Murex", "RBC Capital Markets", "S&P Global Market Intelligence", "LSEG", "Mizuho"}:
         selected = dict(candidates)  # Every offer needs a verified live detail.
     selected.update((path, job) for path, job in candidates.items() if _junior_analyst(job.title))
     selected = list(selected.items())
@@ -4527,7 +4904,10 @@ def _eligible_offer(job: Opportunity) -> bool:
         return False
     return (not _excluded_employer(job.company)
             and not (job.kind == "Graduate" and _junior_analyst(job.title) and _experienced_junior(job.description))
-            and (_market_relevant_with_context(job.title, job.description)
+            and (_rbc_relevant(job.title, job.description) if job.company == "RBC Capital Markets" else
+                 _murex_relevant(job.title, job.description) if job.company == "Murex" else
+                 _pimco_relevant(job.title, job.description) if job.company == "PIMCO" else
+                 _market_relevant_with_context(job.title, job.description)
                  or job.company == "FactSet" and _factset_client_solutions(job.title))
             and (job.source == "JobTeaser · sitemap" or _plausible_location(job.location)))
 
@@ -4545,6 +4925,10 @@ def _deduplicate_opportunities(jobs: list[Opportunity]) -> list[Opportunity]:
         # A repeated requisition may collapse; different employer IDs must survive.
         requisition = (re.search(r"_(R\d+)(?:-\d+)?$", urlparse(job.url).path)
                        if _canonical_company(job.company) == "factset" else None)
+        if _canonical_company(job.company) == "murex":
+            requisition = re.search(r"_(JR\d+)(?:-\d+)?$", urlparse(job.url).path)
+        if _canonical_company(job.company) == "rbccapitalmarkets":
+            requisition = re.search(r"_(R-\d+)(?:-\d+)?$", urlparse(job.url).path)
         greenhouse_board = {"drw": "drweng", "fiverings": "fiveringsllc",
                             "jumptrading": "jumptrading"}.get(_canonical_company(job.company))
         if greenhouse_board:
@@ -4665,6 +5049,12 @@ def _opportunity_source_tasks() -> list[tuple[str, object, tuple]]:
         ("Commerzbank", _commerzbank_jobs, ("", "")),
         ("Standard Chartered", _standard_chartered_jobs, ("", "")),
         ("BPCE Open Data", _bpce_open_data_jobs, ("", "")),
+        ("Ostrum AM", _subsidiary_jobs, ("Ostrum AM",)),
+        ("Mirova", _subsidiary_jobs, ("Mirova",)),
+        ("CPR AM", _subsidiary_jobs, ("CPR AM",)),
+        ("ICE Data Services", _ice_data_jobs, ()),
+        ("La Banque Postale AM", _lbpam_jobs, ()),
+        ("Market Securities", _market_securities_jobs, ()),
         ("JobTeaser \u00b7 sitemap", _jobteaser_jobs, ("", "")),
         ("ODDO BHF", lambda *_: _oddo_jobs(), ()),
         ("Tikehau Capital", lambda *_: _tikehau_jobs(), ()),
@@ -4694,7 +5084,7 @@ def _fetch_opportunities_progressive() -> tuple[list[Opportunity], list[str]]:
     # Source collection is I/O-bound and each connector already caps its own
     # detail requests. Eight workers reduce queueing across the many independent
     # career boards while keeping outbound concurrency bounded.
-    with ThreadPoolExecutor(max_workers=8, thread_name_prefix="internships") as pool:
+    with ThreadPoolExecutor(max_workers=SOURCE_COLLECTION_WORKERS, thread_name_prefix="internships") as pool:
         futures = {pool.submit(_collect_source, name, loader, args, _force_source_refresh): name
                    for name, loader, args in tasks}
         for completed, future in enumerate(as_completed(futures), start=1):
