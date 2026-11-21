@@ -47,11 +47,14 @@ def test_export_only_public_fields(tmp_path, snapshot):
     assert data["offers"][0]["location"] == "Paris · France"
     assert data["offers"][0]["location_source"] == "Paris"
     assert data["sources"]["unavailable"] == 1
-    assert {p.name for p in output.iterdir()} >= {"index.html", "site.css", "app.js", "sources.js", "marketdesk-icon.svg", "frosted-glass.webp", "offers.json", "sources.json", ".nojekyll"}
-    assert {p.name for p in output.iterdir()} <= {"index.html", "site.css", "app.js", "sources.js", "marketdesk-icon.svg", "frosted-glass.webp", "offers.json", "sources.json", "logos", ".nojekyll"}
+    assert {p.name for p in output.iterdir()} >= {"index.html", "site.css", "app.js", "sources.js", "marketdesk-icon.svg", "frosted-glass.webp", "og-image.png", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "offers.json", "sources.json", ".nojekyll"}
+    assert {p.name for p in output.iterdir()} <= {"index.html", "site.css", "app.js", "sources.js", "marketdesk-icon.svg", "frosted-glass.webp", "og-image.png", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "offers.json", "sources.json", "logos", ".nojekyll"}
     page = (output / "index.html").read_text(encoding="utf-8")
     assert 'site.css?v=' in page and 'app.js?v=' in page and 'sources.js?v=' in page
     assert page.count('marketdesk-icon.svg?v=') == 2
+    assert "manifest-src 'self'" in page and 'og-image.png' in page
+    manifest = json.loads((output / "manifest.webmanifest").read_bytes())
+    assert manifest["start_url"] == "./" and all((output / icon["src"]).is_file() for icon in manifest["icons"])
     catalog=json.loads((output/'sources.json').read_bytes())
     assert catalog['request_endpoint']==''
     assert 'connect-src \'self\';' in page
@@ -167,9 +170,9 @@ def test_manual_refresh_also_rechecks_jobteaser_sitemap(tmp_path, monkeypatch, o
 
 
 def test_frontend_has_no_external_services_or_unsafe_html():
-    source = Path("deploy/github-pages/site/app.js").read_text(encoding="utf-8")
+    source = (builder.SITE_ROOT / "app.js").read_text(encoding="utf-8")
     assert "innerHTML" not in source and "eval(" not in source and "document.write" not in source
     assert "textContent" in source
-    html = Path("deploy/github-pages/site/index.html").read_text(encoding="utf-8")
+    html = (builder.SITE_ROOT / "index.html").read_text(encoding="utf-8")
     assert "Content-Security-Policy" in html and "default-src 'none'" in html
     assert "unsafe-inline" not in html and "unsafe-eval" not in html
